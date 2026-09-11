@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+*.tsbuildinfo
+
+# rust
+target/
+**/src-tauri/target/
+**/src-tauri/gen/
+
+# local cargo overrides (target-dir outside OneDrive, etc.)
+.cargo/config.toml
+
+# test / coverage
+coverage/
+.vitest/
+
+# editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+.vs/
+*.swp
+
+# os
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# env
+.env
+.env.local
+.env.*.local
+
+# captured printer output while debugging
+*.prn
+*.tspl.txt
+*.zpl.txt

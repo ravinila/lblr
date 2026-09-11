@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Type-checks the libraries and their tests as one program. Emit is the
+  // individual packages' business; this file exists so `pnpm typecheck` can
+  // see everything at once, including the cross-package imports.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["packages/*/src/**/*", "packages/*/test/**/*", "vitest.config.ts"]
+}

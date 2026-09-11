@@ -1,0 +1,26 @@
+{
+  "name": "lblr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source label designer and print engine for TSPL and ZPL thermal printers",
+  "license": "MIT",
+  "packageManager": "pnpm@11.2.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @lblr/desktop dev",
+    "tauri": "pnpm --filter @lblr/desktop tauri",
+    "build": "pnpm --filter @lblr/desktop build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json && pnpm --filter @lblr/desktop typecheck",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
