@@ -217,9 +217,6 @@ export function DataSheet({
                     onChange={(event) => onSelectAll(event.target.checked)}
                   />
                 </th>
-                <th className="sheet-qty" scope="col" title="Labels to print for the row">
-                  Qty
-                </th>
                 <th className="sheet-index" scope="col">
                   #
                 </th>
@@ -232,6 +229,9 @@ export function DataSheet({
                     {column}
                   </th>
                 ))}
+                <th className="sheet-qty" scope="col" title="Labels to print for the row">
+                  Qty
+                </th>
                 <th className="sheet-actions" scope="col" />
               </tr>
             </thead>
@@ -254,19 +254,6 @@ export function DataSheet({
                       onChange={() => onToggleRow(row)}
                     />
                   </td>
-                  <td className="sheet-qty">
-                    <input
-                      type="number"
-                      value={rowCounts[row] ?? 1}
-                      min={1}
-                      max={999}
-                      step={1}
-                      disabled={!selectedRows.includes(row)}
-                      aria-label={`Labels for row ${row + 1}`}
-                      onFocus={() => onPreviewRow(row)}
-                      onChange={(event) => onRowCount(row, Number(event.target.value))}
-                    />
-                  </td>
                   <td className="sheet-index">
                     <button
                       className="sheet-row-button"
@@ -287,6 +274,19 @@ export function DataSheet({
                       />
                     </td>
                   ))}
+                  <td className="sheet-qty">
+                    <input
+                      type="number"
+                      value={rowCounts[row] ?? 1}
+                      min={1}
+                      max={999}
+                      step={1}
+                      disabled={!selectedRows.includes(row)}
+                      aria-label={`Labels for row ${row + 1}`}
+                      onFocus={() => onPreviewRow(row)}
+                      onChange={(event) => onRowCount(row, Number(event.target.value))}
+                    />
+                  </td>
                   <td className="sheet-actions">
                     <button
                       className="icon-btn"
