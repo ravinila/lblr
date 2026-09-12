@@ -463,14 +463,32 @@ export function App() {
           ))}
         </select>
 
-        <button
-          className="btn"
-          onClick={() => setSheetOpen((open) => !open)}
-          aria-pressed={sheetOpen}
-          title="Rows to print, one per label"
-        >
-          Data{records.length > 0 ? ` · ${records.length}` : ''}
-        </button>
+        {/* The data control: the tick switches the design between the sheet
+            and the sample values; the label opens the sheet itself. */}
+        <div className={`data-control${dataOn ? ' on' : ''}`}>
+          <input
+            type="checkbox"
+            checked={useData}
+            disabled={records.length === 0}
+            aria-label="Design with data"
+            title={
+              records.length === 0
+                ? 'Add rows to the data sheet first'
+                : useData
+                  ? 'Using the data sheet. Untick to design with the sample values.'
+                  : 'Using the sample values. Tick to design with the data sheet.'
+            }
+            onChange={(event) => dispatch({ type: 'useData', on: event.target.checked })}
+          />
+          <button
+            className="btn"
+            onClick={() => setSheetOpen((open) => !open)}
+            aria-pressed={sheetOpen}
+            title="Open the rows to print, one per label"
+          >
+            Data{records.length > 0 ? ` · ${records.length}` : ''}
+          </button>
+        </div>
 
         <span className="spacer" />
 
