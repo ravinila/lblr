@@ -230,6 +230,20 @@ textarea {
   text-align: center;
 }
 
+.sheet .sheet-qty {
+  width: 64px;
+}
+
+.sheet td.sheet-qty input {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet td.sheet-qty input:disabled {
+  color: var(--ink-faint);
+}
+
 .sheet .sheet-check input {
   margin: 0;
   vertical-align: middle;

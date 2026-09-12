@@ -22,6 +22,9 @@ export interface DataSheetProps {
   selectedRows: number[]
   onToggleRow: (row: number) => void
   onSelectAll: (all: boolean) => void
+  /** Labels each row prints, parallel to `records`. */
+  rowCounts: number[]
+  onRowCount: (row: number, count: number) => void
   onCell: (row: number, field: string, value: string) => void
   onAddRow: () => void
   onRemoveRow: (row: number) => void
@@ -40,6 +43,8 @@ export function DataSheet({
   selectedRows,
   onToggleRow,
   onSelectAll,
+  rowCounts,
+  onRowCount,
   onCell,
   onAddRow,
   onRemoveRow,
@@ -74,6 +79,10 @@ export function DataSheet({
 
   // The header checkbox shows the three states a selection can be in.
   const selectedCount = selectedRows.filter((row) => row < records.length).length
+  const labelCount = records.reduce(
+    (sum, _, index) => sum + (selectedRows.includes(index) ? (rowCounts[index] ?? 1) : 0),
+    0,
+  )
   const allSelected = records.length > 0 && selectedCount === records.length
   const headerCheck = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -107,7 +116,14 @@ export function DataSheet({
     const path = await chooseSavePath('labels.csv', 'data')
     if (!path) return
     try {
-      await writeTextFile(path, toDelimited({ fields: columns, records }))
+      // Quantities go out as a qty column, the same column the import reads.
+      await writeTextFile(
+        path,
+        toDelimited({
+          fields: [...columns, 'qty'],
+          records: records.map((record, index) => ({ ...record, qty: rowCounts[index] ?? 1 })),
+        }),
+      )
       setMessage(`Saved ${records.length} rows to ${path}`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
@@ -144,9 +160,11 @@ export function DataSheet({
         <span className="hint">
           {records.length === 0
             ? 'One row per label.'
-            : selectedCount === records.length
-              ? `${records.length} row${records.length === 1 ? '' : 's'}, all printing`
-              : `${selectedCount} of ${records.length} rows printing`}
+            : `${labelCount} label${labelCount === 1 ? '' : 's'} from ${
+                selectedCount === records.length
+                  ? `all ${records.length} rows`
+                  : `${selectedCount} of ${records.length} rows`
+              }`}
         </span>
         {message ? <span className="hint sheet-message">{message}</span> : null}
         <span className="spacer" />
@@ -199,6 +217,9 @@ export function DataSheet({
                     onChange={(event) => onSelectAll(event.target.checked)}
                   />
                 </th>
+                <th className="sheet-qty" scope="col" title="Labels to print for the row">
+                  Qty
+                </th>
                 <th className="sheet-index" scope="col">
                   #
                 </th>
@@ -231,6 +252,19 @@ export function DataSheet({
                       checked={selectedRows.includes(row)}
                       aria-label={`Print row ${row + 1}`}
                       onChange={() => onToggleRow(row)}
+                    />
+                  </td>
+                  <td className="sheet-qty">
+                    <input
+                      type="number"
+                      value={rowCounts[row] ?? 1}
+                      min={1}
+                      max={999}
+                      step={1}
+                      disabled={!selectedRows.includes(row)}
+                      aria-label={`Labels for row ${row + 1}`}
+                      onFocus={() => onPreviewRow(row)}
+                      onChange={(event) => onRowCount(row, Number(event.target.value))}
                     />
                   </td>
                   <td className="sheet-index">

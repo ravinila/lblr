@@ -78,6 +78,8 @@ export interface DesignerState {
   records: DataRecord[]
   /** Indices of the rows that print. A new sheet starts fully selected. */
   selectedRows: number[]
+  /** How many labels each row prints, parallel to `records`. */
+  rowCounts: number[]
   /** Row of the sheet shown on the canvas instead of the sample values. */
   previewRow: number | null
   past: LabelTemplate[]
@@ -109,6 +111,7 @@ export type DesignerAction =
   | { type: 'previewRow'; row: number | null }
   | { type: 'toggleRow'; row: number }
   | { type: 'selectRows'; all: boolean }
+  | { type: 'rowCount'; row: number; count: number }
   | { type: 'load'; template: LabelTemplate; path: string | null }
   | { type: 'new'; template: LabelTemplate }
   | { type: 'saved'; path: string }
@@ -139,6 +142,9 @@ function starterTemplate(): LabelTemplate {
 
 const MAX_UNDO = 60
 
+/** Column names that mean "how many of this row", in the order they are looked for. */
+const QUANTITY_KEYS = ['qty', 'quantity', 'count', 'copies']
+
 /**
  * The document survives a restart. Closing the app mid-design and finding the
  * sample label again is the kind of thing that makes a tool feel disposable,
@@ -156,6 +162,7 @@ interface StoredSession {
   textScale?: Record<PrinterLanguage, TextScale>
   records?: DataRecord[]
   selectedRows?: number[]
+  rowCounts?: number[]
   path: string | null
   dirty: boolean
 }
@@ -177,6 +184,7 @@ function restoreSession(): Partial<DesignerState> | null {
       selectedRows: Array.isArray(stored.selectedRows)
         ? stored.selectedRows
         : (stored.records ?? []).map((_, index) => index),
+      rowCounts: (stored.records ?? []).map((_, index) => stored.rowCounts?.[index] ?? 1),
       path: stored.path ?? null,
       dirty: Boolean(stored.dirty),
     }
@@ -195,6 +203,7 @@ export function persistSession(state: DesignerState): void {
       textScale: state.textScale,
       records: state.records,
       selectedRows: state.selectedRows,
+      rowCounts: state.rowCounts,
       path: state.path,
       dirty: state.dirty,
     }
@@ -215,6 +224,7 @@ export function initialState(): DesignerState {
     textScale: UNSCALED,
     records: [],
     selectedRows: [],
+    rowCounts: [],
     previewRow: null,
     past: [],
     future: [],
@@ -342,16 +352,40 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
         textScale: { ...state.textScale, [action.language]: action.scale },
       }
 
-    case 'records':
+    case 'records': {
+      // A quantity column in the data becomes the per-row count rather than
+      // a field on the label; anything else prints once.
+      const records = action.records.map((record) => {
+        const rest = { ...record }
+        for (const key of QUANTITY_KEYS) delete rest[key]
+        return rest
+      })
+      const rowCounts = action.records.map((record) => {
+        const key = QUANTITY_KEYS.find((candidate) => record[candidate] !== undefined)
+        const count = key ? Number(record[key]) : 1
+        return Number.isFinite(count) && count >= 1 ? Math.floor(count) : 1
+      })
       return {
         ...state,
-        records: action.records,
+        records,
+        rowCounts,
         // A freshly loaded or pasted sheet prints in full until told otherwise.
         selectedRows: action.records.map((_, index) => index),
         previewRow:
           state.previewRow !== null && state.previewRow < action.records.length
             ? state.previewRow
             : null,
+      }
+    }
+
+    case 'rowCount':
+      return {
+        ...state,
+        rowCounts: state.records.map((_, index) =>
+          index === action.row
+            ? Math.max(1, Math.floor(action.count) || 1)
+            : (state.rowCounts[index] ?? 1),
+        ),
       }
 
     case 'cell':
@@ -368,6 +402,7 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
         ...state,
         records,
         selectedRows: [...state.selectedRows, records.length - 1],
+        rowCounts: [...state.rowCounts, 1],
         previewRow: records.length - 1,
       }
     }
@@ -385,7 +420,8 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
       const selectedRows = state.selectedRows
         .filter((row) => row !== action.row)
         .map((row) => (row > action.row ? row - 1 : row))
-      return { ...state, records, selectedRows, previewRow }
+      const rowCounts = state.rowCounts.filter((_, index) => index !== action.row)
+      return { ...state, records, selectedRows, rowCounts, previewRow }
     }
 
     case 'toggleRow':
@@ -501,6 +537,7 @@ export function useDesigner() {
     state.textScale,
     state.records,
     state.selectedRows,
+    state.rowCounts,
     state.path,
     state.dirty,
   ])

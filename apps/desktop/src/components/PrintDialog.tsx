@@ -58,6 +58,8 @@ export interface PrintDialogProps {
   records: DataRecord[]
   /** Rows in the sheet, ticked or not, so the switch can say "3 of 12". */
   totalRows: number
+  /** Ticked rows, before each row's quantity is applied. */
+  selectedRowCount: number
   batch: { commands: string; warnings: string[] } | null
   dpi: number
   language: 'tspl' | 'zpl'
@@ -82,6 +84,7 @@ export function PrintDialog({
   data,
   records,
   totalRows,
+  selectedRowCount,
   batch,
   dpi,
   language,
@@ -278,10 +281,10 @@ export function PrintDialog({
                     Sample values
                   </button>
                   <button aria-pressed={source === 'sheet'} onClick={() => setSource('sheet')}>
-                    Data sheet ·{' '}
-                    {records.length < totalRows
-                      ? `${records.length} of ${totalRows} rows`
-                      : `${records.length} row${records.length === 1 ? '' : 's'}`}
+                    Data sheet · {records.length} label{records.length === 1 ? '' : 's'}
+                    {selectedRowCount < totalRows || records.length !== selectedRowCount
+                      ? ` from ${selectedRowCount} of ${totalRows} rows`
+                      : ''}
                   </button>
                 </div>
               ) : null}

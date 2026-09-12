@@ -59,7 +59,8 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null)
   const [viewport, setViewport] = useState({ width: 0, height: 0 })
 
-  const { template, dpi, zoom, language, sample, records, selectedRows, previewRow } = state
+  const { template, dpi, zoom, language, sample, records, selectedRows, rowCounts, previewRow } =
+    state
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetHeight, setSheetHeight] = useState(() => {
     try {
@@ -94,9 +95,19 @@ export function App() {
   }, [template, data, dpi, language, textScale])
 
   // The ticked rows of the sheet as one job, only when there are any.
+  // Every ticked row, repeated by its count, in sheet order.
   const selectedRecords = useMemo(
-    () => records.filter((_, index) => selectedRows.includes(index)),
-    [records, selectedRows],
+    () =>
+      records.flatMap((record, index) =>
+        selectedRows.includes(index)
+          ? Array.from({ length: rowCounts[index] ?? 1 }, () => record)
+          : [],
+      ),
+    [records, selectedRows, rowCounts],
+  )
+  const selectedRowCount = useMemo(
+    () => selectedRows.filter((row) => row < records.length).length,
+    [selectedRows, records.length],
   )
   const batch = useMemo(() => {
     if (selectedRecords.length === 0) return null
@@ -538,6 +549,8 @@ export function App() {
           previewRow={previewRow}
           onToggleRow={(row) => dispatch({ type: 'toggleRow', row })}
           onSelectAll={(all) => dispatch({ type: 'selectRows', all })}
+          rowCounts={rowCounts}
+          onRowCount={(row, count) => dispatch({ type: 'rowCount', row, count })}
           onCell={(row, field, value) => dispatch({ type: 'cell', row, field, value })}
           onAddRow={() => dispatch({ type: 'addRow' })}
           onRemoveRow={(row) => dispatch({ type: 'removeRow', row })}
@@ -595,6 +608,7 @@ export function App() {
           data={data}
           records={selectedRecords}
           totalRows={records.length}
+          selectedRowCount={selectedRowCount}
           batch={batch}
           dpi={dpi}
           language={language}
