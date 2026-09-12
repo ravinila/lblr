@@ -60,6 +60,8 @@ export interface PrintDialogProps {
   totalRows: number
   /** Ticked rows, before each row's quantity is applied. */
   selectedRowCount: number
+  /** Open on the sheet rather than the sample values. */
+  preferSheet: boolean
   batch: { commands: string; warnings: string[] } | null
   dpi: number
   language: 'tspl' | 'zpl'
@@ -85,6 +87,7 @@ export function PrintDialog({
   records,
   totalRows,
   selectedRowCount,
+  preferSheet,
   batch,
   dpi,
   language,
@@ -107,7 +110,9 @@ export function PrintDialog({
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   /** Print the sample label once, or every row of the sheet. */
-  const [source, setSource] = useState<'sample' | 'sheet'>(batch ? 'sheet' : 'sample')
+  const [source, setSource] = useState<'sample' | 'sheet'>(
+    batch && preferSheet ? 'sheet' : 'sample',
+  )
   const fromSheet = source === 'sheet' && batch !== null
   const jobCommands = fromSheet ? batch.commands : commands
   const jobWarnings = fromSheet ? batch.warnings : warnings

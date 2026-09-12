@@ -60,8 +60,20 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null)
   const [viewport, setViewport] = useState({ width: 0, height: 0 })
 
-  const { template, dpi, zoom, language, sample, records, selectedRows, rowCounts, previewRow } =
-    state
+  const {
+    template,
+    dpi,
+    zoom,
+    language,
+    sample,
+    records,
+    selectedRows,
+    rowCounts,
+    useData,
+    previewRow,
+  } = state
+  // Data drives the design only when switched on and there is some.
+  const dataOn = useData && records.length > 0
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetHeight, setSheetHeight] = useState(() => {
     try {
@@ -81,7 +93,9 @@ export function App() {
 
   // What fills the placeholders on the canvas: the previewed sheet row when
   // there is one, otherwise the sample values.
-  const activeRow = previewRow ?? selectedRows.find((row) => row < records.length) ?? null
+  const activeRow = dataOn
+    ? (previewRow ?? selectedRows.find((row) => row < records.length) ?? null)
+    : null
   const previewed = activeRow !== null ? records[activeRow] : undefined
   const data = useMemo(
     () => (previewed ? { ...sample, ...previewed } : sample),
@@ -111,7 +125,7 @@ export function App() {
   // previewed row in print order, quantities applied, covering the rest of
   // the pass and the next row. Nothing when the sheet is empty.
   const canvasSequence = useMemo(() => {
-    if (selectedRecords.length === 0) return undefined
+    if (!dataOn || selectedRecords.length === 0) return undefined
     const layout = resolveLayout(template)
     const slots = layout.columns * layout.rows - 1 + layout.columns
     const ordered = records.flatMap((record, index) =>
@@ -122,7 +136,7 @@ export function App() {
     const start = activeRow === null ? -1 : ordered.findIndex((item) => item.row === activeRow)
     if (start < 0) return undefined
     return Array.from({ length: slots }, (_, offset) => ordered[start + 1 + offset]?.record ?? null)
-  }, [selectedRecords.length, records, selectedRows, rowCounts, activeRow, template])
+  }, [dataOn, selectedRecords.length, records, selectedRows, rowCounts, activeRow, template])
 
   const selectedRowCount = useMemo(
     () => selectedRows.filter((row) => row < records.length).length,
@@ -570,6 +584,8 @@ export function App() {
           onToggleRow={(row) => dispatch({ type: 'toggleRow', row })}
           onSelectAll={(all) => dispatch({ type: 'selectRows', all })}
           rowCounts={rowCounts}
+          useData={useData}
+          onUseData={(on) => dispatch({ type: 'useData', on })}
           onRowCount={(row, count) => dispatch({ type: 'rowCount', row, count })}
           onCell={(row, field, value) => dispatch({ type: 'cell', row, field, value })}
           onAddRow={() => dispatch({ type: 'addRow' })}
@@ -629,6 +645,7 @@ export function App() {
           records={selectedRecords}
           totalRows={records.length}
           selectedRowCount={selectedRowCount}
+          preferSheet={dataOn}
           batch={batch}
           dpi={dpi}
           language={language}

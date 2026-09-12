@@ -80,6 +80,11 @@ export interface DesignerState {
   selectedRows: number[]
   /** How many labels each row prints, parallel to `records`. */
   rowCounts: number[]
+  /**
+   * Whether the sheet drives the canvas and the default print source. Off,
+   * the sample values are used even while the sheet has rows.
+   */
+  useData: boolean
   /** Row of the sheet shown on the canvas instead of the sample values. */
   previewRow: number | null
   past: LabelTemplate[]
@@ -112,6 +117,7 @@ export type DesignerAction =
   | { type: 'toggleRow'; row: number }
   | { type: 'selectRows'; all: boolean }
   | { type: 'rowCount'; row: number; count: number }
+  | { type: 'useData'; on: boolean }
   | { type: 'load'; template: LabelTemplate; path: string | null }
   | { type: 'new'; template: LabelTemplate }
   | { type: 'saved'; path: string }
@@ -163,6 +169,7 @@ interface StoredSession {
   records?: DataRecord[]
   selectedRows?: number[]
   rowCounts?: number[]
+  useData?: boolean
   path: string | null
   dirty: boolean
 }
@@ -185,6 +192,7 @@ function restoreSession(): Partial<DesignerState> | null {
         ? stored.selectedRows
         : (stored.records ?? []).map((_, index) => index),
       rowCounts: (stored.records ?? []).map((_, index) => stored.rowCounts?.[index] ?? 1),
+      useData: stored.useData ?? true,
       path: stored.path ?? null,
       dirty: Boolean(stored.dirty),
     }
@@ -204,6 +212,7 @@ export function persistSession(state: DesignerState): void {
       records: state.records,
       selectedRows: state.selectedRows,
       rowCounts: state.rowCounts,
+      useData: state.useData,
       path: state.path,
       dirty: state.dirty,
     }
@@ -225,6 +234,7 @@ export function initialState(): DesignerState {
     records: [],
     selectedRows: [],
     rowCounts: [],
+    useData: true,
     previewRow: null,
     past: [],
     future: [],
@@ -377,6 +387,9 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
             : null,
       }
     }
+
+    case 'useData':
+      return { ...state, useData: action.on }
 
     case 'rowCount':
       return {
@@ -538,6 +551,7 @@ export function useDesigner() {
     state.records,
     state.selectedRows,
     state.rowCounts,
+    state.useData,
     state.path,
     state.dirty,
   ])

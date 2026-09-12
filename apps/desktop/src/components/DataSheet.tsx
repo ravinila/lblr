@@ -25,6 +25,9 @@ export interface DataSheetProps {
   /** Labels each row prints, parallel to `records`. */
   rowCounts: number[]
   onRowCount: (row: number, count: number) => void
+  /** Whether the sheet drives the canvas and the default print source. */
+  useData: boolean
+  onUseData: (on: boolean) => void
   onCell: (row: number, field: string, value: string) => void
   onAddRow: () => void
   onRemoveRow: (row: number) => void
@@ -45,6 +48,8 @@ export function DataSheet({
   onSelectAll,
   rowCounts,
   onRowCount,
+  useData,
+  onUseData,
   onCell,
   onAddRow,
   onRemoveRow,
@@ -157,6 +162,14 @@ export function DataSheet({
       />
       <header className="sheet-bar">
         <strong>Data</strong>
+        <label className="switch" title="Off: the canvas and printing use the sample values">
+          <input
+            type="checkbox"
+            checked={useData}
+            onChange={(event) => onUseData(event.target.checked)}
+          />
+          Design with data
+        </label>
         <span className="hint">
           {records.length === 0
             ? 'One row per label.'
