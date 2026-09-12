@@ -116,6 +116,7 @@ export type DesignerAction =
   | { type: 'previewRow'; row: number | null }
   | { type: 'toggleRow'; row: number }
   | { type: 'selectRows'; all: boolean }
+  | { type: 'selectSome'; rows: number[]; on: boolean }
   | { type: 'rowCount'; row: number; count: number }
   | { type: 'useData'; on: boolean }
   | { type: 'load'; template: LabelTemplate; path: string | null }
@@ -450,6 +451,17 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
         ...state,
         selectedRows: action.all ? state.records.map((_, index) => index) : [],
       }
+
+    case 'selectSome': {
+      // Used by the sheet's header tick while a filter is on: only the rows
+      // that are showing change.
+      const set = new Set(state.selectedRows)
+      for (const row of action.rows) {
+        if (action.on) set.add(row)
+        else set.delete(row)
+      }
+      return { ...state, selectedRows: [...set].sort((a, b) => a - b) }
+    }
 
     case 'previewRow':
       return { ...state, previewRow: action.row }

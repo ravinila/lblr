@@ -601,6 +601,7 @@ export function App() {
           previewRow={activeRow}
           onToggleRow={(row) => dispatch({ type: 'toggleRow', row })}
           onSelectAll={(all) => dispatch({ type: 'selectRows', all })}
+          onSelectSome={(rows, on) => dispatch({ type: 'selectSome', rows, on })}
           rowCounts={rowCounts}
           useData={useData}
           onUseData={(on) => dispatch({ type: 'useData', on })}

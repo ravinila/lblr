@@ -22,6 +22,8 @@ export interface DataSheetProps {
   selectedRows: number[]
   onToggleRow: (row: number) => void
   onSelectAll: (all: boolean) => void
+  /** Select or deselect just these rows, for a filtered view. */
+  onSelectSome: (rows: number[], on: boolean) => void
   /** Labels each row prints, parallel to `records`. */
   rowCounts: number[]
   onRowCount: (row: number, count: number) => void
@@ -46,6 +48,7 @@ export function DataSheet({
   selectedRows,
   onToggleRow,
   onSelectAll,
+  onSelectSome,
   rowCounts,
   onRowCount,
   useData,
@@ -82,17 +85,37 @@ export function DataSheet({
   }
   const [message, setMessage] = useState<string | null>(null)
 
-  // The header checkbox shows the three states a selection can be in.
+  // Filtering: a plain substring match across every column, case-insensitive.
+  // Rows keep their real index so ticks, quantities and previews stay put.
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const shown = records
+    .map((record, index) => ({ record, index }))
+    .filter(
+      ({ record }) =>
+        needle === '' ||
+        Object.values(record).some((value) =>
+          String(value ?? '')
+            .toLowerCase()
+            .includes(needle),
+        ),
+    )
+  const filtering = needle !== ''
+
+  // The header checkbox shows the three states a selection can be in, over
+  // the rows that are showing.
   const selectedCount = selectedRows.filter((row) => row < records.length).length
   const labelCount = records.reduce(
     (sum, _, index) => sum + (selectedRows.includes(index) ? (rowCounts[index] ?? 1) : 0),
     0,
   )
-  const allSelected = records.length > 0 && selectedCount === records.length
+  const shownSelected = shown.filter(({ index }) => selectedRows.includes(index)).length
+  const allShownSelected = shown.length > 0 && shownSelected === shown.length
+  const allSelected = allShownSelected
   const headerCheck = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (headerCheck.current) {
-      headerCheck.current.indeterminate = selectedCount > 0 && !allSelected
+      headerCheck.current.indeterminate = shownSelected > 0 && !allShownSelected
     }
   }, [selectedCount, allSelected])
 
@@ -166,6 +189,24 @@ export function DataSheet({
       />
       <header className="sheet-bar">
         <strong>Data</strong>
+        <span className="sheet-search">
+          <input
+            type="search"
+            value={query}
+            placeholder="Filter rows"
+            aria-label="Filter rows"
+            disabled={records.length === 0}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setQuery('')
+            }}
+          />
+          {filtering ? (
+            <span className="hint">
+              {shown.length} of {records.length}
+            </span>
+          ) : null}
+        </span>
         <label className="switch" title="Off: the canvas and printing use the sample values">
           <input
             type="checkbox"
@@ -219,6 +260,8 @@ export function DataSheet({
         <p className="empty sheet-empty">
           Paste rows from a spreadsheet, import a CSV, or add a row. Columns: {columns.join(', ')}.
         </p>
+      ) : shown.length === 0 ? (
+        <p className="empty sheet-empty">No rows match "{query.trim()}".</p>
       ) : (
         <div className="sheet-scroll">
           <table>
@@ -229,9 +272,32 @@ export function DataSheet({
                     ref={headerCheck}
                     type="checkbox"
                     checked={allSelected}
-                    aria-label={allSelected ? 'Deselect every row' : 'Select every row'}
-                    title={allSelected ? 'Deselect every row' : 'Select every row'}
-                    onChange={(event) => onSelectAll(event.target.checked)}
+                    aria-label={
+                      filtering
+                        ? allSelected
+                          ? 'Deselect the rows shown'
+                          : 'Select the rows shown'
+                        : allSelected
+                          ? 'Deselect every row'
+                          : 'Select every row'
+                    }
+                    title={
+                      filtering
+                        ? allSelected
+                          ? 'Deselect the rows shown'
+                          : 'Select the rows shown'
+                        : allSelected
+                          ? 'Deselect every row'
+                          : 'Select every row'
+                    }
+                    onChange={(event) =>
+                      filtering
+                        ? onSelectSome(
+                            shown.map(({ index }) => index),
+                            event.target.checked,
+                          )
+                        : onSelectAll(event.target.checked)
+                    }
                   />
                 </th>
                 <th className="sheet-index" scope="col">
@@ -253,7 +319,7 @@ export function DataSheet({
               </tr>
             </thead>
             <tbody>
-              {records.map((record, row) => (
+              {shown.map(({ record, index: row }) => (
                 <tr
                   key={row}
                   className={[
