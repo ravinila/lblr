@@ -979,7 +979,7 @@ details.disclosure > .code {
 
 .view-toggle {
   position: absolute;
-  left: 34px;
+  right: 12px;
   top: 36px;
   background: rgb(255 255 255 / 92%);
   border: 1px solid var(--hairline-strong);
