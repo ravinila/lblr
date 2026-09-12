@@ -189,24 +189,6 @@ export function DataSheet({
       />
       <header className="sheet-bar">
         <strong>Data</strong>
-        <span className="sheet-search">
-          <input
-            type="search"
-            value={query}
-            placeholder="Filter rows"
-            aria-label="Filter rows"
-            disabled={records.length === 0}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setQuery('')
-            }}
-          />
-          {filtering ? (
-            <span className="hint">
-              {shown.length} of {records.length}
-            </span>
-          ) : null}
-        </span>
         <label className="switch" title="Off: the canvas and printing use the sample values">
           <input
             type="checkbox"
@@ -226,6 +208,24 @@ export function DataSheet({
         </span>
         {message ? <span className="hint sheet-message">{message}</span> : null}
         <span className="spacer" />
+        <span className="sheet-search">
+          <input
+            type="search"
+            value={query}
+            placeholder="Filter rows"
+            aria-label="Filter rows"
+            disabled={records.length === 0}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setQuery('')
+            }}
+          />
+          {filtering ? (
+            <span className="hint">
+              {shown.length} of {records.length}
+            </span>
+          ) : null}
+        </span>
         <button className="btn" onClick={onAddRow} disabled={columns.length === 0}>
           <PlusIcon />
           Row
