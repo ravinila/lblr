@@ -193,6 +193,21 @@ textarea {
   text-align: center;
 }
 
+.sheet .sheet-check {
+  width: 34px;
+  text-align: center;
+}
+
+.sheet .sheet-check input {
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* A row that is not ticked stays editable but reads as left out. */
+.sheet tr.skipped td:not(.sheet-check) {
+  opacity: 0.45;
+}
+
 .sheet .sheet-actions {
   width: 32px;
   text-align: center;

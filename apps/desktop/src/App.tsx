@@ -54,7 +54,7 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null)
   const [viewport, setViewport] = useState({ width: 0, height: 0 })
 
-  const { template, dpi, zoom, language, sample, records, previewRow } = state
+  const { template, dpi, zoom, language, sample, records, selectedRows, previewRow } = state
   const [sheetOpen, setSheetOpen] = useState(false)
 
   // What fills the placeholders on the canvas: the previewed sheet row when
@@ -73,12 +73,16 @@ export function App() {
     return compile(template, data, { dpi, textScale })
   }, [template, data, dpi, language, textScale])
 
-  // The whole sheet as one job, only when the sheet has rows.
+  // The ticked rows of the sheet as one job, only when there are any.
+  const selectedRecords = useMemo(
+    () => records.filter((_, index) => selectedRows.includes(index)),
+    [records, selectedRows],
+  )
   const batch = useMemo(() => {
-    if (records.length === 0) return null
+    if (selectedRecords.length === 0) return null
     const compile = language === 'tspl' ? batchTspl : batchZpl
-    return compile(template, records, { dpi, textScale })
-  }, [template, records, dpi, language, textScale])
+    return compile(template, selectedRecords, { dpi, textScale })
+  }, [template, selectedRecords, dpi, language, textScale])
 
   const fields = useMemo(() => templateFields(template), [template])
   const pass = useMemo(
@@ -507,7 +511,10 @@ export function App() {
         <DataSheet
           fields={fields}
           records={records}
+          selectedRows={selectedRows}
           previewRow={previewRow}
+          onToggleRow={(row) => dispatch({ type: 'toggleRow', row })}
+          onSelectAll={(all) => dispatch({ type: 'selectRows', all })}
           onCell={(row, field, value) => dispatch({ type: 'cell', row, field, value })}
           onAddRow={() => dispatch({ type: 'addRow' })}
           onRemoveRow={(row) => dispatch({ type: 'removeRow', row })}
@@ -559,7 +566,8 @@ export function App() {
           blocked={blocked}
           template={template}
           data={data}
-          records={records}
+          records={selectedRecords}
+          totalRows={records.length}
           batch={batch}
           dpi={dpi}
           language={language}

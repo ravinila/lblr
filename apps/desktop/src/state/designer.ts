@@ -76,6 +76,8 @@ export interface DesignerState {
   textScale: Record<PrinterLanguage, TextScale>
   /** One record per label to print in a batch. Kept apart from the template. */
   records: DataRecord[]
+  /** Indices of the rows that print. A new sheet starts fully selected. */
+  selectedRows: number[]
   /** Row of the sheet shown on the canvas instead of the sample values. */
   previewRow: number | null
   past: LabelTemplate[]
@@ -105,6 +107,8 @@ export type DesignerAction =
   | { type: 'addRow' }
   | { type: 'removeRow'; row: number }
   | { type: 'previewRow'; row: number | null }
+  | { type: 'toggleRow'; row: number }
+  | { type: 'selectRows'; all: boolean }
   | { type: 'load'; template: LabelTemplate; path: string | null }
   | { type: 'new'; template: LabelTemplate }
   | { type: 'saved'; path: string }
@@ -151,6 +155,7 @@ interface StoredSession {
   sample: Record<string, string>
   textScale?: Record<PrinterLanguage, TextScale>
   records?: DataRecord[]
+  selectedRows?: number[]
   path: string | null
   dirty: boolean
 }
@@ -169,6 +174,9 @@ function restoreSession(): Partial<DesignerState> | null {
       sample: stored.sample ?? {},
       textScale: { ...UNSCALED, ...stored.textScale },
       records: Array.isArray(stored.records) ? stored.records : [],
+      selectedRows: Array.isArray(stored.selectedRows)
+        ? stored.selectedRows
+        : (stored.records ?? []).map((_, index) => index),
       path: stored.path ?? null,
       dirty: Boolean(stored.dirty),
     }
@@ -186,6 +194,7 @@ export function persistSession(state: DesignerState): void {
       sample: state.sample,
       textScale: state.textScale,
       records: state.records,
+      selectedRows: state.selectedRows,
       path: state.path,
       dirty: state.dirty,
     }
@@ -205,6 +214,7 @@ export function initialState(): DesignerState {
     sample: { name: 'ACME Bearing 6204', sku: '7894561230' },
     textScale: UNSCALED,
     records: [],
+    selectedRows: [],
     previewRow: null,
     past: [],
     future: [],
@@ -336,6 +346,8 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
       return {
         ...state,
         records: action.records,
+        // A freshly loaded or pasted sheet prints in full until told otherwise.
+        selectedRows: action.records.map((_, index) => index),
         previewRow:
           state.previewRow !== null && state.previewRow < action.records.length
             ? state.previewRow
@@ -352,7 +364,12 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
 
     case 'addRow': {
       const records = [...state.records, blankRecord(templateFields(state.template))]
-      return { ...state, records, previewRow: records.length - 1 }
+      return {
+        ...state,
+        records,
+        selectedRows: [...state.selectedRows, records.length - 1],
+        previewRow: records.length - 1,
+      }
     }
 
     case 'removeRow': {
@@ -365,8 +382,25 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
             : state.previewRow > action.row
               ? state.previewRow - 1
               : state.previewRow
-      return { ...state, records, previewRow }
+      const selectedRows = state.selectedRows
+        .filter((row) => row !== action.row)
+        .map((row) => (row > action.row ? row - 1 : row))
+      return { ...state, records, selectedRows, previewRow }
     }
+
+    case 'toggleRow':
+      return {
+        ...state,
+        selectedRows: state.selectedRows.includes(action.row)
+          ? state.selectedRows.filter((row) => row !== action.row)
+          : [...state.selectedRows, action.row].sort((a, b) => a - b),
+      }
+
+    case 'selectRows':
+      return {
+        ...state,
+        selectedRows: action.all ? state.records.map((_, index) => index) : [],
+      }
 
     case 'previewRow':
       return { ...state, previewRow: action.row }
@@ -466,6 +500,7 @@ export function useDesigner() {
     state.sample,
     state.textScale,
     state.records,
+    state.selectedRows,
     state.path,
     state.dirty,
   ])

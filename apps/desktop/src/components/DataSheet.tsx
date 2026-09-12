@@ -8,7 +8,7 @@
  * is printed.
  */
 
-import { useState, type ClipboardEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { parseDelimited, toDelimited, type DataRecord } from '@lblr/core'
 
 import { chooseOpenPath, chooseSavePath, readTextFile, writeTextFile } from '../lib/backend.js'
@@ -18,6 +18,10 @@ export interface DataSheetProps {
   fields: string[]
   records: DataRecord[]
   previewRow: number | null
+  /** Indices of the rows that print. */
+  selectedRows: number[]
+  onToggleRow: (row: number) => void
+  onSelectAll: (all: boolean) => void
   onCell: (row: number, field: string, value: string) => void
   onAddRow: () => void
   onRemoveRow: (row: number) => void
@@ -30,6 +34,9 @@ export function DataSheet({
   fields,
   records,
   previewRow,
+  selectedRows,
+  onToggleRow,
+  onSelectAll,
   onCell,
   onAddRow,
   onRemoveRow,
@@ -38,6 +45,16 @@ export function DataSheet({
   onClose,
 }: DataSheetProps) {
   const [message, setMessage] = useState<string | null>(null)
+
+  // The header checkbox shows the three states a selection can be in.
+  const selectedCount = selectedRows.filter((row) => row < records.length).length
+  const allSelected = records.length > 0 && selectedCount === records.length
+  const headerCheck = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (headerCheck.current) {
+      headerCheck.current.indeterminate = selectedCount > 0 && !allSelected
+    }
+  }, [selectedCount, allSelected])
 
   // Columns are the template's fields plus anything the data brought along,
   // so nothing imported is silently dropped.
@@ -89,7 +106,9 @@ export function DataSheet({
         <span className="hint">
           {records.length === 0
             ? 'One row per label.'
-            : `${records.length} row${records.length === 1 ? '' : 's'}`}
+            : selectedCount === records.length
+              ? `${records.length} row${records.length === 1 ? '' : 's'}, all printing`
+              : `${selectedCount} of ${records.length} rows printing`}
         </span>
         {message ? <span className="hint sheet-message">{message}</span> : null}
         <span className="spacer" />
@@ -132,6 +151,16 @@ export function DataSheet({
           <table>
             <thead>
               <tr>
+                <th className="sheet-check" scope="col">
+                  <input
+                    ref={headerCheck}
+                    type="checkbox"
+                    checked={allSelected}
+                    aria-label={allSelected ? 'Deselect every row' : 'Select every row'}
+                    title={allSelected ? 'Deselect every row' : 'Select every row'}
+                    onChange={(event) => onSelectAll(event.target.checked)}
+                  />
+                </th>
                 <th className="sheet-index" scope="col">
                   #
                 </th>
@@ -149,7 +178,23 @@ export function DataSheet({
             </thead>
             <tbody>
               {records.map((record, row) => (
-                <tr key={row} className={previewRow === row ? 'previewing' : ''}>
+                <tr
+                  key={row}
+                  className={[
+                    previewRow === row ? 'previewing' : '',
+                    selectedRows.includes(row) ? '' : 'skipped',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  <td className="sheet-check">
+                    <input
+                      type="checkbox"
+                      checked={selectedRows.includes(row)}
+                      aria-label={`Print row ${row + 1}`}
+                      onChange={() => onToggleRow(row)}
+                    />
+                  </td>
                   <td className="sheet-index">
                     <button
                       className="sheet-row-button"

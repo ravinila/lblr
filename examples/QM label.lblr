@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "id": "wklvps22",
+  "name": "Untitled label",
+  "media": {
+    "width": 25,
+    "height": 25,
+    "gap": 2,
+    "type": "gap",
+    "columns": 4,
+    "columnGap": 0
+  },
+  "defaults": {
+    "darkness": 8,
+    "speed": 4,
+    "direction": 1,
+    "copies": 1
+  },
+  "elements": [
+    {
+      "id": "xrylmi0s",
+      "type": "text",
+      "x": 0.7507389162561576,
+      "y": 3.0029556650246305,
+      "value": "QuickMart",
+      "fontSize": 2.8,
+      "maxWidth": 23.6,
+      "align": "center",
+      "bold": false
+    },
+    {
+      "id": "wqfr0a4e",
+      "type": "barcode",
+      "moduleWidth": 0.15,
+      "ratio": 2,
+      "humanReadable": true,
+      "x": 4.129064039408867,
+      "y": 8.633497536945812,
+      "value": "5678905",
+      "symbology": "code128",
+      "height": 2.8
+    },
+    {
+      "id": "ha23ve40",
+      "type": "text",
+      "x": 8.883743842364533,
+      "y": 18.643349753694583,
+      "value": "lblr",
+      "fontSize": 3
+    }
+  ],
+  "createdAt": "2026-09-12T13:35:49.632Z",
+  "updatedAt": "2026-09-12T13:54:30.382Z",
+  "fields": []
+}
