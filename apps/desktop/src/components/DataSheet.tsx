@@ -240,7 +240,18 @@ export function DataSheet({
         </button>
         <button
           className="btn btn-ghost"
-          onClick={() => onReplace([])}
+          onClick={() => {
+            // The sheet is not on the undo stack, so this is the one place
+            // that asks first.
+            const count = records.length
+            if (
+              window.confirm(
+                `Remove all ${count} row${count === 1 ? '' : 's'} from the data sheet?`,
+              )
+            ) {
+              onReplace([])
+            }
+          }}
           disabled={records.length === 0}
           title="Remove every row"
         >
