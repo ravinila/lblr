@@ -62,6 +62,9 @@ The same template renders in the designer and on the printer because both consum
 installs. The installer is not code-signed yet, so Windows SmartScreen shows a warning on first
 run. Choose "More info" and then "Run anyway".
 
+Once installed, the app checks for a newer release when it starts and offers to update itself.
+Nothing is downloaded until you accept, and updates are signed, so a tampered installer is refused.
+
 Other platforms are not packaged yet. To run from source see [Development](#development).
 
 ## Quick start

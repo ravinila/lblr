@@ -26,7 +26,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "deb", "appimage", "dmg"],
+    "targets": [
+      "nsis",
+      "msi",
+      "deb",
+      "appimage",
+      "dmg"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,6 +42,15 @@
     ],
     "category": "Productivity",
     "shortDescription": "Label designer and print engine for thermal printers",
-    "longDescription": "Design barcode labels in millimetres and print them to TSPL or ZPL thermal printers without going through a print driver."
+    "longDescription": "Design barcode labels in millimetres and print them to TSPL or ZPL thermal printers without going through a print driver.",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3QTMxQTJFNzExODYwRkYKUldUL1lCaHhMaHFqOTh3MUFUTHhOMFdHTUpUWmZoT2RhTXN0UG9yQ1N0VUsrdmhnNE96NE14dzYK",
+      "endpoints": [
+        "https://github.com/ravinila/lblr/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

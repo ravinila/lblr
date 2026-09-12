@@ -91,9 +91,10 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-rows: auto 1fr 30px;
+  grid-template-rows: auto auto 1fr 30px;
   grid-template-columns: var(--rail-width, var(--rail)) 1fr var(--inspector-width, var(--inspector));
   grid-template-areas:
+    'update  update  update'
     'toolbar toolbar toolbar'
     'rail    stage   inspector'
     'status  status  status';
@@ -102,8 +103,9 @@ textarea {
 
 /* The data sheet slides in as a drawer under the stage. */
 .app.with-sheet {
-  grid-template-rows: auto 1fr var(--sheet-height, 240px) 30px;
+  grid-template-rows: auto auto 1fr var(--sheet-height, 240px) 30px;
   grid-template-areas:
+    'update  update  update'
     'toolbar toolbar toolbar'
     'rail    stage   inspector'
     'rail    sheet   inspector'
@@ -305,6 +307,18 @@ textarea {
 .sheet tr.previewing .sheet-row-button {
   color: var(--instrument-ink);
   font-weight: 600;
+}
+
+/* The update offer: a bar across the top, above the toolbar. */
+.update-banner {
+  grid-area: update;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--instrument-soft);
+  color: var(--instrument-ink);
+  border-bottom: 1px solid rgb(37 99 235 / 25%);
 }
 
 .toolbar {

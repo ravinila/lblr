@@ -33,6 +33,7 @@ import { LabelCanvas, RULER, drawnSize, type CanvasView } from './components/Lab
 import { NewLabelDialog, type NewLabelSpec } from './components/NewLabelDialog.js'
 import { PrintDialog } from './components/PrintDialog.js'
 import { Rail } from './components/Rail.js'
+import { UpdateBanner } from './components/UpdateBanner.js'
 import { chooseOpenPath, chooseSavePath, readTextFile, writeTextFile } from './lib/backend.js'
 import { usePanel } from './state/usePanel.js'
 import {
@@ -437,6 +438,8 @@ export function App() {
         } as CSSProperties
       }
     >
+      <UpdateBanner />
+
       <header className="toolbar">
         <span className="brand">
           <span className="brand-mark">
