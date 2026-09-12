@@ -1065,6 +1065,8 @@ details.disclosure > .code {
 .scrim {
   position: fixed;
   inset: 0;
+  /* Above every stacking context in the shell, including sticky table headers. */
+  z-index: 100;
   display: grid;
   place-items: center;
   background: rgb(23 27 33 / 40%);
