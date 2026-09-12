@@ -1,6 +1,6 @@
 {
   "name": "@lblr/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "lblr label designer — Tauri desktop app",
   "license": "MIT",
   "private": true,

@@ -1,6 +1,6 @@
 [package]
 name = "lblr"
-version = "0.1.0"
+version = "0.1.1"
 description = "Open-source label designer and print engine for thermal printers"
 authors = ["lblr contributors"]
 license = "MIT"
