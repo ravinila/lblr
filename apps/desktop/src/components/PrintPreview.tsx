@@ -33,9 +33,22 @@ export interface PrintPreviewProps {
   layout: ResolvedLayout
   /** Tallest the preview grows before the pass is scaled down to fit. */
   maxHeight?: number
+  /**
+   * What each cell holds, in reading order, when the cells differ: a record
+   * to bind, or null for a cell the pass leaves blank. Without it every cell
+   * shows `data`.
+   */
+  cells?: Array<DataRecord | null>
 }
 
-export function PrintPreview({ template, data, dpi, layout, maxHeight = 360 }: PrintPreviewProps) {
+export function PrintPreview({
+  template,
+  data,
+  dpi,
+  layout,
+  maxHeight = 360,
+  cells: cellData,
+}: PrintPreviewProps) {
   const host = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
 
@@ -66,7 +79,9 @@ export function PrintPreview({ template, data, dpi, layout, maxHeight = 360 }: P
   const height = Math.round(linerHeight * pxPerMm + pad * 2)
   const originX = pad + (innerWidth - linerWidth * pxPerMm) / 2 + webMargin * pxPerMm
   const originY = pad + rowMargin * pxPerMm
-  const bound = template.elements.map((element) => bindElement(element, data))
+  const bindAll = (record: DataRecord) =>
+    template.elements.map((element) => bindElement(element, record))
+  const bound = bindAll(data)
 
   return (
     <div ref={host} className="preview" aria-label="Print preview">
@@ -102,10 +117,15 @@ export function PrintPreview({ template, data, dpi, layout, maxHeight = 360 }: P
                   height={media.height * pxPerMm}
                   fill="#ffffff"
                 />
-                {template.elements.map((element, index) => (
+                {(cellData === undefined
+                  ? bound
+                  : cellData[cell.row * layout.columns + cell.column]
+                    ? bindAll(cellData[cell.row * layout.columns + cell.column] ?? {})
+                    : []
+                ).map((element, index) => (
                   <ElementShape
                     key={element.id}
-                    element={bound[index] ?? element}
+                    element={element}
                     pxPerMm={pxPerMm}
                     dpi={dpi}
                     selected={false}

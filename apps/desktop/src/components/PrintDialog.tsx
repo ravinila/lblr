@@ -112,6 +112,8 @@ export function PrintDialog({
   const jobCommands = fromSheet ? batch.commands : commands
   const jobWarnings = fromSheet ? batch.warnings : warnings
   const previewData = fromSheet ? (records[0] ?? data) : data
+  /** Which pass the preview shows when printing from the sheet. */
+  const [passIndex, setPassIndex] = useState(0)
   /** How far the Back and Forward buttons move the paper, in millimetres. */
   const [moveBy, setMoveBy] = useState(5)
   /** The text size check: printed, and waiting for the ruler. */
@@ -151,6 +153,12 @@ export function PrintDialog({
   const perPass = layoutSize(media, resolved)
   const cells = resolved.columns * resolved.rows
   const passes = fromSheet ? Math.ceil(records.length / cells) : 1
+  const shownPass = Math.min(passIndex, Math.max(0, passes - 1))
+  // The records that land in each cell of the shown pass; short passes
+  // leave their remaining cells blank, exactly as the printer will.
+  const passCells = fromSheet
+    ? Array.from({ length: cells }, (_, index) => records[shownPass * cells + index] ?? null)
+    : undefined
   const total = (fromSheet ? records.length : cells) * Math.max(1, copies)
 
   const send = async () => {
@@ -288,7 +296,36 @@ export function PrintDialog({
                   </button>
                 </div>
               ) : null}
-              <PrintPreview template={template} data={previewData} dpi={dpi} layout={resolved} />
+              <PrintPreview
+                template={template}
+                data={previewData}
+                dpi={dpi}
+                layout={resolved}
+                cells={passCells}
+              />
+              {fromSheet && passes > 1 ? (
+                <div className="pass-pager">
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setPassIndex(Math.max(0, shownPass - 1))}
+                    disabled={shownPass === 0}
+                    aria-label="Previous pass"
+                  >
+                    ‹
+                  </button>
+                  <span className="measure">
+                    Pass {shownPass + 1} of {passes}
+                  </span>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setPassIndex(Math.min(passes - 1, shownPass + 1))}
+                    disabled={shownPass >= passes - 1}
+                    aria-label="Next pass"
+                  >
+                    ›
+                  </button>
+                </div>
+              ) : null}
               <div className="print-summary">
                 <span>
                   <strong>

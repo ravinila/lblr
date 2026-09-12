@@ -1079,6 +1079,23 @@ details.disclosure > .code {
   }
 }
 
+.pass-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.pass-pager .btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
 .print-summary {
   display: flex;
   align-items: baseline;
