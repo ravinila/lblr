@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   canPrint,
   createTemplate,
@@ -244,8 +244,15 @@ export function App() {
 
   // --- zoom ----------------------------------------------------------------
 
+  // Whether the zoom is the person's own choice rather than an automatic fit.
+  // A chosen zoom survives switching between the Label and Roll views; only
+  // a new document, or pressing Fit, hands control back to the fit.
+  const zoomChosen = useRef(false)
   const setZoom = useCallback(
-    (next: number) => dispatch({ type: 'zoom', zoom: clampZoom(next) }),
+    (next: number) => {
+      zoomChosen.current = true
+      dispatch({ type: 'zoom', zoom: clampZoom(next) })
+    },
     [dispatch],
   )
 
@@ -265,17 +272,21 @@ export function App() {
       availableHeight / (drawn.height * perMm),
     )
     setZoom(Math.floor(fit * 100) / 100)
+    zoomChosen.current = false
   }, [dpi, drawn.height, drawn.width, setZoom, viewport])
 
   // Fit the strip when the stage first reports a size and whenever a
   // different document arrives. In between, the zoom is the person's own.
   const [fittedFor, setFittedFor] = useState<string | null>(null)
   useEffect(() => {
-    // Refit for a new document and whenever the view changes shape.
+    if (viewport.width === 0) return
     const key = `${template.id}:${view}`
-    if (fittedFor === key || viewport.width === 0) return
+    if (fittedFor === key) return
+    const newDocument = fittedFor === null || !fittedFor.startsWith(`${template.id}:`)
     setFittedFor(key)
-    zoomToFit()
+    // A new document always fits. A view change refits only while the zoom
+    // is still automatic; a zoom the person chose is kept.
+    if (newDocument || !zoomChosen.current) zoomToFit()
   }, [fittedFor, template.id, view, viewport.width, zoomToFit])
 
   // Keyboard shortcuts, scoped so they never fire while a field has focus.
