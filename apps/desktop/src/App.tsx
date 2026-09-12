@@ -28,7 +28,7 @@ import {
 } from './components/icons.js'
 import { DataSheet } from './components/DataSheet.js'
 import { Inspector } from './components/Inspector.js'
-import { LabelCanvas, RULER, drawnSize } from './components/LabelCanvas.js'
+import { LabelCanvas, RULER, drawnSize, type CanvasView } from './components/LabelCanvas.js'
 import { NewLabelDialog, type NewLabelSpec } from './components/NewLabelDialog.js'
 import { PrintDialog } from './components/PrintDialog.js'
 import { Rail } from './components/Rail.js'
@@ -48,6 +48,9 @@ const DPI_OPTIONS = [203, 300, 600]
 const SHEET_HEIGHT_KEY = 'lblr.sheetHeight'
 const DEFAULT_SHEET_HEIGHT = 240
 const MIN_SHEET_HEIGHT = 120
+
+/** Whether the canvas shows the whole roll or one label, remembered per machine. */
+const VIEW_KEY = 'lblr.view'
 
 /** Breathing room around a strip that has been zoomed to fit, in pixels. */
 const FIT_MARGIN = 72
@@ -153,7 +156,21 @@ export function App() {
     () => layoutSize(template.media, stockLayout(template.media)),
     [template.media],
   )
-  const drawn = useMemo(() => drawnSize(template), [template])
+  const [view, setView] = useState<CanvasView>(() => {
+    try {
+      return window.localStorage.getItem(VIEW_KEY) === 'label' ? 'label' : 'roll'
+    } catch {
+      return 'roll'
+    }
+  })
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VIEW_KEY, view)
+    } catch {
+      // A forgotten view preference is not worth a crash.
+    }
+  }, [view])
+  const drawn = useMemo(() => drawnSize(template, view), [template, view])
   const across = template.media.columns ?? 1
 
   const addElement = useCallback(
@@ -254,10 +271,12 @@ export function App() {
   // different document arrives. In between, the zoom is the person's own.
   const [fittedFor, setFittedFor] = useState<string | null>(null)
   useEffect(() => {
-    if (fittedFor === template.id || viewport.width === 0) return
-    setFittedFor(template.id)
+    // Refit for a new document and whenever the view changes shape.
+    const key = `${template.id}:${view}`
+    if (fittedFor === key || viewport.width === 0) return
+    setFittedFor(key)
     zoomToFit()
-  }, [fittedFor, template.id, viewport.width, zoomToFit])
+  }, [fittedFor, template.id, view, viewport.width, zoomToFit])
 
   // Keyboard shortcuts, scoped so they never fire while a field has focus.
   useEffect(() => {
@@ -520,6 +539,7 @@ export function App() {
           template={template}
           data={data}
           sequence={canvasSequence}
+          view={view}
           dpi={dpi}
           zoom={zoom}
           selectedId={state.selectedId}
@@ -531,6 +551,23 @@ export function App() {
           onZoomBy={zoomBy}
           onViewport={setViewport}
         />
+
+        <div className="view-toggle segments" role="group" aria-label="Canvas view">
+          <button
+            aria-pressed={view === 'label'}
+            onClick={() => setView('label')}
+            title="Just the label being edited"
+          >
+            Label
+          </button>
+          <button
+            aria-pressed={view === 'roll'}
+            onClick={() => setView('roll')}
+            title="The whole strip with its neighbours"
+          >
+            Roll
+          </button>
+        </div>
 
         <div className="stage-chip">
           <span>

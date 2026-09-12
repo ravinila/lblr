@@ -977,6 +977,15 @@ details.disclosure > .code {
 
 /* ---------- stage overlays ---------- */
 
+.view-toggle {
+  position: absolute;
+  left: 34px;
+  top: 36px;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 1px 3px rgb(23 27 33 / 10%);
+}
+
 .stage-chip {
   position: absolute;
   left: 34px;

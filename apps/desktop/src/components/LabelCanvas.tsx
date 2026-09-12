@@ -63,7 +63,13 @@ const WEB_MARGIN = 1.5
  * The area the canvas draws for a template, in millimetres: one print pass
  * plus the row that follows it. Fit-to-window sizes against this.
  */
-export function drawnSize(template: LabelTemplate): { width: number; height: number } {
+export type CanvasView = 'label' | 'roll'
+
+export function drawnSize(
+  template: LabelTemplate,
+  view: CanvasView = 'roll',
+): { width: number; height: number } {
+  if (view === 'label') return { width: template.media.width, height: template.media.height }
   const layout = resolveLayout(template)
   const pass = layoutSize(template.media, layout)
   return { width: pass.width, height: pass.height + layout.rowGap + template.media.height }
@@ -79,6 +85,8 @@ export interface LabelCanvasProps {
    * means every cell is a copy of the edited one.
    */
   sequence?: Array<DataRecord | null>
+  /** The whole strip with its neighbours, or just the label being edited. */
+  view: CanvasView
   dpi: number
   zoom: number
   selectedId: string | null
@@ -107,6 +115,7 @@ export function LabelCanvas({
   template,
   data,
   sequence,
+  view,
   dpi,
   zoom,
   selectedId,
@@ -230,9 +239,11 @@ export function LabelCanvas({
 
   const { media } = template
   const layout = resolveLayout(template)
-  const cells = layoutCells(media, layout)
-  const pass = layoutSize(media, layout)
-  const drawn = drawnSize(template)
+  const single = view === 'label'
+  // In the single-label view only the edited cell is drawn, as its own pass.
+  const cells = single ? layoutCells(media, layout).slice(0, 1) : layoutCells(media, layout)
+  const pass = single ? { width: media.width, height: media.height } : layoutSize(media, layout)
+  const drawn = drawnSize(template, view)
   // Where the row after this pass begins: the gap is what shows between.
   const nextRowY = pass.height + layout.rowGap
 
@@ -461,7 +472,7 @@ export function LabelCanvas({
 
             {/* The row after this pass, faint: it shows the gap, the cut and
                 where the next labels land, and takes no edits. */}
-            <Group opacity={0.4} listening={false}>
+            <Group opacity={0.4} listening={false} visible={!single}>
               {cells
                 .filter((cell) => cell.row === 0)
                 .map((cell) => (
