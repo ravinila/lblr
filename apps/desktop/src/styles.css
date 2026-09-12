@@ -249,6 +249,18 @@ textarea {
   vertical-align: middle;
 }
 
+/* With Design with data off, the whole sheet reads as set aside: still
+   editable, but visibly not what the canvas or the printer is using. */
+.sheet.inactive .sheet-scroll,
+.sheet.inactive .sheet-empty {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.sheet.inactive .sheet-bar > .hint:not(.sheet-message) {
+  color: var(--ink-faint);
+}
+
 /* A row that is not ticked stays editable but reads as left out. */
 .sheet tr.skipped td:not(.sheet-check) {
   opacity: 0.45;

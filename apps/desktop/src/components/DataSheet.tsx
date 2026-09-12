@@ -147,7 +147,11 @@ export function DataSheet({
   }
 
   return (
-    <section className="sheet" aria-label="Data sheet" onPaste={onPaste}>
+    <section
+      className={`sheet${useData ? '' : ' inactive'}`}
+      aria-label="Data sheet"
+      onPaste={onPaste}
+    >
       <div
         className="sheet-resize"
         role="separator"
