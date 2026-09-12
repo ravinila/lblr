@@ -72,6 +72,13 @@ export function drawnSize(template: LabelTemplate): { width: number; height: num
 export interface LabelCanvasProps {
   template: LabelTemplate
   data: DataRecord
+  /**
+   * What the other cells hold when printing from the data sheet: the records
+   * that follow `data` in print order, one per cell in reading order across
+   * the pass and then the next row, or null for a cell left blank. Omitted
+   * means every cell is a copy of the edited one.
+   */
+  sequence?: Array<DataRecord | null>
   dpi: number
   zoom: number
   selectedId: string | null
@@ -99,6 +106,7 @@ function tickStep(pxPerMm: number): number {
 export function LabelCanvas({
   template,
   data,
+  sequence,
   dpi,
   zoom,
   selectedId,
@@ -265,7 +273,16 @@ export function LabelCanvas({
 
   const webMargin = WEB_MARGIN * pxPerMm
   const rowMargin = (media.type === 'continuous' ? 0 : layout.rowGap / 2) * pxPerMm
-  const bound = template.elements.map((element) => bindElement(element, data))
+  const bindAll = (record: DataRecord) =>
+    template.elements.map((element) => bindElement(element, record))
+  const bound = bindAll(data)
+  /** The bound elements for a non-edited cell, or none when the pass leaves it blank. */
+  const boundFor = (slot: number) => {
+    if (!sequence) return bound
+    const record = sequence[slot]
+    return record ? bindAll(record) : []
+  }
+  const columns = layout.columns
 
   return (
     <div ref={host} className="stage-host" style={{ position: 'absolute', inset: 0 }}>
@@ -409,13 +426,14 @@ export function LabelCanvas({
                       ))}
                     </>
                   ) : (
-                    // Sibling cells are live copies: same artwork, slightly
-                    // lifted so the eye finds the one that takes edits.
+                    // Sibling cells: live copies of the edited label, or, when
+                    // printing from the sheet, the records that follow it.
+                    // Slightly lifted so the eye finds the one that takes edits.
                     <Group opacity={0.55} listening={false}>
-                      {template.elements.map((element, index) => (
+                      {boundFor(cell.row * columns + cell.column - 1).map((element) => (
                         <ElementShape
                           key={element.id}
-                          element={bound[index] ?? element}
+                          element={element}
                           pxPerMm={pxPerMm}
                           dpi={dpi}
                           selected={false}
@@ -449,10 +467,10 @@ export function LabelCanvas({
                 .map((cell) => (
                   <Group key={`next,${cell.column}`} x={cell.dx * pxPerMm} y={nextRowY * pxPerMm}>
                     <Rect x={0} y={0} width={labelWidth} height={labelHeight} fill={PAPER} />
-                    {template.elements.map((element, index) => (
+                    {boundFor(cells.length - 1 + cell.column).map((element) => (
                       <ElementShape
                         key={element.id}
-                        element={bound[index] ?? element}
+                        element={element}
                         pxPerMm={pxPerMm}
                         dpi={dpi}
                         selected={false}

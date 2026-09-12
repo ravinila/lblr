@@ -7,6 +7,7 @@ import {
   layoutSize,
   mmToDots,
   parseTemplate,
+  resolveLayout,
   serializeTemplate,
   stockLayout,
   templateFields,
@@ -80,7 +81,8 @@ export function App() {
 
   // What fills the placeholders on the canvas: the previewed sheet row when
   // there is one, otherwise the sample values.
-  const previewed = previewRow !== null ? records[previewRow] : undefined
+  const activeRow = previewRow ?? selectedRows.find((row) => row < records.length) ?? null
+  const previewed = activeRow !== null ? records[activeRow] : undefined
   const data = useMemo(
     () => (previewed ? { ...sample, ...previewed } : sample),
     [sample, previewed],
@@ -105,6 +107,23 @@ export function App() {
       ),
     [records, selectedRows, rowCounts],
   )
+  // What the canvas shows around the edited cell: the records that follow the
+  // previewed row in print order, quantities applied, covering the rest of
+  // the pass and the next row. Nothing when the sheet is empty.
+  const canvasSequence = useMemo(() => {
+    if (selectedRecords.length === 0) return undefined
+    const layout = resolveLayout(template)
+    const slots = layout.columns * layout.rows - 1 + layout.columns
+    const ordered = records.flatMap((record, index) =>
+      selectedRows.includes(index)
+        ? Array.from({ length: rowCounts[index] ?? 1 }, () => ({ record, row: index }))
+        : [],
+    )
+    const start = activeRow === null ? -1 : ordered.findIndex((item) => item.row === activeRow)
+    if (start < 0) return undefined
+    return Array.from({ length: slots }, (_, offset) => ordered[start + 1 + offset]?.record ?? null)
+  }, [selectedRecords.length, records, selectedRows, rowCounts, activeRow, template])
+
   const selectedRowCount = useMemo(
     () => selectedRows.filter((row) => row < records.length).length,
     [selectedRows, records.length],
@@ -468,6 +487,7 @@ export function App() {
         <LabelCanvas
           template={template}
           data={data}
+          sequence={canvasSequence}
           dpi={dpi}
           zoom={zoom}
           selectedId={state.selectedId}
@@ -546,7 +566,7 @@ export function App() {
           fields={fields}
           records={records}
           selectedRows={selectedRows}
-          previewRow={previewRow}
+          previewRow={activeRow}
           onToggleRow={(row) => dispatch({ type: 'toggleRow', row })}
           onSelectAll={(all) => dispatch({ type: 'selectRows', all })}
           rowCounts={rowCounts}
