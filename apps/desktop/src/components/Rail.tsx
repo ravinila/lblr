@@ -1,10 +1,13 @@
 /** Add elements, then manage the stack they form. */
 
+import type { ReactNode } from 'react'
 import type { LabelElement, LabelTemplate, ValidationIssue } from '@lblr/core'
 
 import {
   BarcodeIcon,
   BoxIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
   GripIcon,
@@ -52,6 +55,11 @@ export interface RailProps {
   onToggleLocked: (element: LabelElement) => void
   /** A row was dragged to a new position in the top-down list. */
   onArrange: (id: string, index: number) => void
+  /** Collapsed to a slim strip with just the reopen button. */
+  collapsed: boolean
+  onToggle: () => void
+  /** The draggable edge, rendered by the shell that owns the width. */
+  edge: ReactNode
 }
 
 export function Rail({
@@ -63,6 +71,9 @@ export function Rail({
   onToggleHidden,
   onToggleLocked,
   onArrange,
+  collapsed,
+  onToggle,
+  edge,
 }: RailProps) {
   // Later in the array draws on top, so the list reads top-down like the stack.
   const stacked = [...template.elements].reverse()
@@ -80,7 +91,16 @@ export function Rail({
   })
 
   return (
-    <aside className="rail">
+    <aside className={`rail side${collapsed ? ' collapsed' : ''}`}>
+      <button
+        className="icon-btn panel-toggle"
+        onClick={onToggle}
+        aria-label={collapsed ? 'Show the element panel' : 'Hide the element panel'}
+        title={collapsed ? 'Show the element panel' : 'Hide the element panel'}
+      >
+        {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+      </button>
+      {collapsed ? null : edge}
       <section className="panel">
         <h2>Add to the label</h2>
         <div className="add-list">

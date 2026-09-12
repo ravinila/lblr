@@ -22,7 +22,17 @@ import {
   type ValidationIssue,
 } from '@lblr/core'
 
-import { CheckIcon, DownIcon, ErrorIcon, TrashIcon, UpIcon, WarningIcon } from './icons.js'
+import type { ReactNode } from 'react'
+import {
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  DownIcon,
+  ErrorIcon,
+  TrashIcon,
+  UpIcon,
+  WarningIcon,
+} from './icons.js'
 import { RollSketch } from './NewLabelDialog.js'
 
 const SYMBOLOGIES: LinearSymbology[] = [
@@ -121,6 +131,11 @@ export interface InspectorProps {
   onDefaults: (patch: Partial<PrintDefaults>) => void
   onSample: (field: string, value: string) => void
   onSelectIssue: (elementId: string) => void
+  /** Collapsed to a slim strip with just the reopen button. */
+  collapsed: boolean
+  onToggle: () => void
+  /** The draggable edge, rendered by the shell that owns the width. */
+  edge: ReactNode
 }
 
 export function Inspector({
@@ -136,6 +151,9 @@ export function Inspector({
   onDefaults,
   onSample,
   onSelectIssue,
+  collapsed,
+  onToggle,
+  edge,
 }: InspectorProps) {
   const patch = (values: Partial<LabelElement>) => {
     if (selected) onUpdate(selected.id, values)
@@ -146,7 +164,16 @@ export function Inspector({
   const pass = layoutSize(media, stockLayout(media))
 
   return (
-    <aside className="inspector">
+    <aside className={`inspector side${collapsed ? ' collapsed' : ''}`}>
+      <button
+        className="icon-btn panel-toggle"
+        onClick={onToggle}
+        aria-label={collapsed ? 'Show the properties panel' : 'Hide the properties panel'}
+        title={collapsed ? 'Show the properties panel' : 'Hide the properties panel'}
+      >
+        {collapsed ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+      </button>
+      {collapsed ? null : edge}
       {selected ? (
         <>
           <section className="panel">

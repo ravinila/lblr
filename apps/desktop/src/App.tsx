@@ -28,11 +28,13 @@ import {
 } from './components/icons.js'
 import { DataSheet } from './components/DataSheet.js'
 import { Inspector } from './components/Inspector.js'
+import { PanelEdge } from './components/PanelEdge.js'
 import { LabelCanvas, RULER, drawnSize, type CanvasView } from './components/LabelCanvas.js'
 import { NewLabelDialog, type NewLabelSpec } from './components/NewLabelDialog.js'
 import { PrintDialog } from './components/PrintDialog.js'
 import { Rail } from './components/Rail.js'
 import { chooseOpenPath, chooseSavePath, readTextFile, writeTextFile } from './lib/backend.js'
+import { usePanel } from './state/usePanel.js'
 import {
   ZOOM_DEFAULT,
   clampZoom,
@@ -51,6 +53,12 @@ const MIN_SHEET_HEIGHT = 120
 
 /** Whether the canvas shows the whole roll or one label, remembered per machine. */
 const VIEW_KEY = 'lblr.view'
+
+/** Side panel sizes: default, and how far they can be dragged. */
+const RAIL_PANEL = { width: 236, min: 180, max: 420 }
+const INSPECTOR_PANEL = { width: 296, min: 240, max: 560 }
+/** Width of a collapsed panel: just enough for its reopen button. */
+const COLLAPSED_WIDTH = 28
 
 /** Breathing room around a strip that has been zoomed to fit, in pixels. */
 const FIT_MARGIN = 72
@@ -78,6 +86,8 @@ export function App() {
   // Data drives the design only when switched on and there is some.
   const dataOn = useData && records.length > 0
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [rail, railControls] = usePanel('lblr.rail', RAIL_PANEL)
+  const [inspector, inspectorControls] = usePanel('lblr.inspector', INSPECTOR_PANEL)
   const [sheetHeight, setSheetHeight] = useState(() => {
     try {
       const stored = Number(window.localStorage.getItem(SHEET_HEIGHT_KEY))
@@ -419,7 +429,13 @@ export function App() {
   return (
     <div
       className={`app${sheetOpen ? ' with-sheet' : ''}`}
-      style={{ '--sheet-height': `${sheetHeight}px` } as CSSProperties}
+      style={
+        {
+          '--sheet-height': `${sheetHeight}px`,
+          '--rail-width': `${rail.open ? rail.width : COLLAPSED_WIDTH}px`,
+          '--inspector-width': `${inspector.open ? inspector.width : COLLAPSED_WIDTH}px`,
+        } as CSSProperties
+      }
     >
       <header className="toolbar">
         <span className="brand">
@@ -543,6 +559,19 @@ export function App() {
         onToggleHidden={(element) => update(element.id, { hidden: !element.hidden })}
         onToggleLocked={(element) => update(element.id, { locked: !element.locked })}
         onArrange={(id, index) => dispatch({ type: 'arrange', id, index })}
+        collapsed={!rail.open}
+        onToggle={railControls.toggle}
+        edge={
+          <PanelEdge
+            width={rail.width}
+            direction={1}
+            min={RAIL_PANEL.min}
+            max={RAIL_PANEL.max}
+            onWidth={railControls.setWidth}
+            onReset={railControls.reset}
+            label="Resize the element panel"
+          />
+        }
       />
 
       <main className="stage">
@@ -639,6 +668,19 @@ export function App() {
         onDefaults={(patch) => dispatch({ type: 'defaults', patch })}
         onSample={(field, value) => dispatch({ type: 'sample', field, value })}
         onSelectIssue={(id) => dispatch({ type: 'select', id })}
+        collapsed={!inspector.open}
+        onToggle={inspectorControls.toggle}
+        edge={
+          <PanelEdge
+            width={inspector.width}
+            direction={-1}
+            min={INSPECTOR_PANEL.min}
+            max={INSPECTOR_PANEL.max}
+            onWidth={inspectorControls.setWidth}
+            onReset={inspectorControls.reset}
+            label="Resize the properties panel"
+          />
+        }
       />
 
       {sheetOpen ? (

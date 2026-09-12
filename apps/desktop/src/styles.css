@@ -91,8 +91,8 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-rows: 52px 1fr 30px;
-  grid-template-columns: var(--rail) 1fr var(--inspector);
+  grid-template-rows: auto 1fr 30px;
+  grid-template-columns: var(--rail-width, var(--rail)) 1fr var(--inspector-width, var(--inspector));
   grid-template-areas:
     'toolbar toolbar toolbar'
     'rail    stage   inspector'
@@ -102,7 +102,7 @@ textarea {
 
 /* The data sheet slides in as a drawer under the stage. */
 .app.with-sheet {
-  grid-template-rows: 52px 1fr var(--sheet-height, 240px) 30px;
+  grid-template-rows: auto 1fr var(--sheet-height, 240px) 30px;
   grid-template-areas:
     'toolbar toolbar toolbar'
     'rail    stage   inspector'
@@ -311,8 +311,10 @@ textarea {
   grid-area: toolbar;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-height: 52px;
+  padding: 6px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--hairline);
 }
@@ -380,6 +382,94 @@ textarea {
   background: var(--panel);
   border-right: 1px solid var(--hairline);
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ---------- side panels: resize edge and collapse ---------- */
+
+.side {
+  position: relative;
+  min-width: 0;
+}
+
+.panel-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.rail .panel-edge {
+  right: 0;
+}
+
+.inspector .panel-edge {
+  left: 0;
+}
+
+.panel-edge::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background-color 80ms ease;
+}
+
+.rail .panel-edge::after {
+  right: 0;
+}
+
+.inspector .panel-edge::after {
+  left: 0;
+}
+
+.panel-edge:hover::after,
+.panel-edge:active::after {
+  background: var(--instrument);
+}
+
+.panel-toggle {
+  position: absolute;
+  top: 10px;
+  z-index: 2;
+}
+
+.rail .panel-toggle {
+  right: 8px;
+}
+
+.inspector .panel-toggle {
+  left: 8px;
+}
+
+/* A collapsed panel is a slim strip holding only its reopen button. */
+.side.collapsed {
+  overflow: hidden;
+}
+
+.side.collapsed > *:not(.panel-toggle) {
+  display: none;
+}
+
+.side.collapsed .panel-toggle {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+}
+
+/* Room for the toggle beside the first heading. */
+.rail > .panel:first-of-type > h2,
+.inspector > .panel:first-of-type .panel-title {
+  padding-right: 28px;
+}
+
+.inspector > .panel:first-of-type {
+  padding-left: 34px;
 }
 
 .stage {

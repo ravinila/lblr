@@ -184,6 +184,18 @@ export const GripIcon = (p: IconProps) => (
   </Svg>
 )
 
+export const ChevronLeftIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 3.5L5.5 8l4.5 4.5" />
+  </Svg>
+)
+
+export const ChevronRightIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 3.5L10.5 8 6 12.5" />
+  </Svg>
+)
+
 export const CloseIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 4l8 8M12 4l-8 8" />
