@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   canPrint,
   createTemplate,
@@ -43,6 +43,11 @@ import {
 
 const DPI_OPTIONS = [203, 300, 600]
 
+/** The data drawer's height in pixels, remembered between launches. */
+const SHEET_HEIGHT_KEY = 'lblr.sheetHeight'
+const DEFAULT_SHEET_HEIGHT = 240
+const MIN_SHEET_HEIGHT = 120
+
 /** Breathing room around a strip that has been zoomed to fit, in pixels. */
 const FIT_MARGIN = 72
 
@@ -56,6 +61,21 @@ export function App() {
 
   const { template, dpi, zoom, language, sample, records, selectedRows, previewRow } = state
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetHeight, setSheetHeight] = useState(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(SHEET_HEIGHT_KEY))
+      return stored >= MIN_SHEET_HEIGHT ? stored : DEFAULT_SHEET_HEIGHT
+    } catch {
+      return DEFAULT_SHEET_HEIGHT
+    }
+  })
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SHEET_HEIGHT_KEY, String(sheetHeight))
+    } catch {
+      // Losing the drawer height is not worth a crash.
+    }
+  }, [sheetHeight])
 
   // What fills the placeholders on the canvas: the previewed sheet row when
   // there is one, otherwise the sample values.
@@ -323,7 +343,10 @@ export function App() {
   const warnings = issues.length - errors
 
   return (
-    <div className={`app${sheetOpen ? ' with-sheet' : ''}`}>
+    <div
+      className={`app${sheetOpen ? ' with-sheet' : ''}`}
+      style={{ '--sheet-height': `${sheetHeight}px` } as CSSProperties}
+    >
       <header className="toolbar">
         <span className="brand">
           <span className="brand-mark">
@@ -520,6 +543,10 @@ export function App() {
           onRemoveRow={(row) => dispatch({ type: 'removeRow', row })}
           onReplace={(next) => dispatch({ type: 'records', records: next })}
           onPreviewRow={(row) => dispatch({ type: 'previewRow', row })}
+          height={sheetHeight}
+          onHeight={(height) =>
+            setSheetHeight(Math.max(MIN_SHEET_HEIGHT, Math.min(window.innerHeight - 260, height)))
+          }
           onClose={() => setSheetOpen(false)}
         />
       ) : null}

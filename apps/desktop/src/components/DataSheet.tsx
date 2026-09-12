@@ -8,7 +8,7 @@
  * is printed.
  */
 
-import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type PointerEvent } from 'react'
 import { parseDelimited, toDelimited, type DataRecord } from '@lblr/core'
 
 import { chooseOpenPath, chooseSavePath, readTextFile, writeTextFile } from '../lib/backend.js'
@@ -28,6 +28,9 @@ export interface DataSheetProps {
   onReplace: (records: DataRecord[]) => void
   onPreviewRow: (row: number | null) => void
   onClose: () => void
+  /** Drawer height in pixels, and the request to change it while the top edge is dragged. */
+  height: number
+  onHeight: (height: number) => void
 }
 
 export function DataSheet({
@@ -43,7 +46,30 @@ export function DataSheet({
   onReplace,
   onPreviewRow,
   onClose,
+  height,
+  onHeight,
 }: DataSheetProps) {
+  // Dragging the top edge. The height at the press is the reference, so the
+  // drawer follows the pointer exactly rather than accumulating rounding.
+  const resizeStart = useRef<{ pointerId: number; y: number; height: number } | null>(null)
+  const resizeFrame = useRef(0)
+  const onResizeDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    resizeStart.current = { pointerId: event.pointerId, y: event.clientY, height }
+  }
+  const onResizeMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = resizeStart.current
+    if (!start || start.pointerId !== event.pointerId) return
+    const next = start.height - (event.clientY - start.y)
+    cancelAnimationFrame(resizeFrame.current)
+    resizeFrame.current = requestAnimationFrame(() => onHeight(next))
+  }
+  const onResizeUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (resizeStart.current?.pointerId !== event.pointerId) return
+    resizeStart.current = null
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
   const [message, setMessage] = useState<string | null>(null)
 
   // The header checkbox shows the three states a selection can be in.
@@ -101,6 +127,18 @@ export function DataSheet({
 
   return (
     <section className="sheet" aria-label="Data sheet" onPaste={onPaste}>
+      <div
+        className="sheet-resize"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize the data sheet"
+        title="Drag to resize"
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+        onPointerCancel={onResizeUp}
+        onDoubleClick={() => onHeight(240)}
+      />
       <header className="sheet-bar">
         <strong>Data</strong>
         <span className="hint">
