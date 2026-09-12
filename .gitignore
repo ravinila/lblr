@@ -41,3 +41,6 @@ desktop.ini
 *.prn
 *.tspl.txt
 *.zpl.txt
+
+# vite dependency cache
+.vite/
