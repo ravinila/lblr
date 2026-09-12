@@ -4,13 +4,13 @@
 
 Most label software is either closed and expensive (BarTender, NiceLabel) or locked to one vendor
 (ZebraDesigner, P-touch Editor). The open-source projects that do exist almost all speak **ZPL** only,
-which leaves every **TSPL** printer — TSC, TVS, Godex, and the many rebrands — without a free option.
+which leaves every **TSPL** printer, from TSC, TVS and Godex to the many rebrands, without a free option.
 
 lblr targets both, from one label document.
 
 > Status: early, but end to end. The core model, both compilers, the raw print
-> path and the designer canvas all work. Verified against one printer so far —
-> reports for other models are very welcome.
+> path and the designer canvas all work. Verified against one printer so far.
+> Reports for other models are very welcome.
 
 ---
 
@@ -32,8 +32,8 @@ The same template renders in the designer and on the printer because both consum
 ## Features
 
 - **Two printer languages.** TSPL/TSPL2 and ZPL II from one template, chosen per device.
-- **Native barcodes.** Emits the printer's own `BARCODE`/`^BC` commands rather than images — sharper,
-  and an order of magnitude faster to transmit.
+- **Native barcodes.** Emits the printer's own `BARCODE`/`^BC` commands rather than images. They are
+  sharper, and an order of magnitude faster to transmit.
 - **True-dpi preview.** The canvas renders at the target device resolution, so what you see is what burns.
 - **Data binding.** `{{sku}}` placeholders filled from the built-in data sheet: paste rows from a
   spreadsheet or import a CSV, preview any row on the canvas, and print the whole sheet as one job.
@@ -41,7 +41,7 @@ The same template renders in the designer and on the printer because both consum
   chosen size: product tag, QR tag, price tag, address, shipping and framed text.
 - **A real editor.** Resize with handles, hold Alt to scale from the centre, double-click text to
   edit it in place, drag rows to restack, and snap to smart guides while moving.
-- **Direct printing.** Windows spooler RAW, TCP port 9100, and USB — no print dialog, no scaling.
+- **Direct printing.** Windows spooler RAW, TCP port 9100, and USB. No print dialog, no scaling.
 - **Millimetre-native.** Authoring is in mm; dot conversion happens once, at compile time.
 - **Stock presets.** New labels start from the die-cut sizes suppliers actually sell, 25 × 15 up to 4 × 6 in.
 - **Multi-column rolls.** Tell the label how many sit across the roll and what separates them. The
@@ -112,8 +112,8 @@ Many non-Zebra printers also ship a ZPL emulation mode. If yours does, either ba
 
 Verified so far: **TVS Electronics LP 46 Neo** (203 dpi). Its firmware draws the built-in font at
 roughly twice the requested size and wraps `BLOCK` text unreliably, so lblr breaks lines itself
-and ships a text size check to measure the correction. Reports for other models are very welcome —
-open an issue with your configuration label and we'll add it.
+and ships a text size check to measure the correction. Reports for other models are very welcome.
+Open an issue with your configuration label and we'll add it.
 
 ## Repository layout
 
@@ -133,7 +133,7 @@ lblr/
     └── with-msvc.mjs    picks a working MSVC toolchain on Windows
 ```
 
-The packages carry no Tauri dependency and are usable on their own — in a Node service, a CLI, or
+The packages carry no Tauri dependency and are usable on their own, in a Node service, a CLI, or
 someone else's app. That is deliberate.
 
 ## Development
@@ -148,8 +148,8 @@ pnpm test         # vitest across all packages
 pnpm typecheck
 ```
 
-The designer also runs in an ordinary browser tab — `pnpm --filter @lblr/desktop
-vite` — which is the quicker loop for canvas work. Everything but printing
+The designer also runs in an ordinary browser tab with `pnpm --filter @lblr/desktop
+vite`, which is the quicker loop for canvas work. Everything but printing
 works there, and the print dialog says so rather than failing quietly.
 
 <details>
@@ -157,7 +157,7 @@ works there, and the print dialog says so rather than failing quietly.
 
 `pnpm dev` and `pnpm build` route cargo through `scripts/with-msvc.mjs`. rustc and cc-rs both pick the
 _newest_ Visual Studio install they can find, so a newer install with an incomplete C++ workload breaks
-the build — `LNK1104: cannot open msvcrt.lib`, or `C1083: Cannot open include file: 'excpt.h'`. The
+the build with `LNK1104: cannot open msvcrt.lib`, or `C1083: Cannot open include file: 'excpt.h'`. The
 wrapper asks vswhere for an install that actually carries the x64 C++ tools and seeds the environment
 from that one.
 
@@ -168,7 +168,7 @@ Calling `cargo` directly skips the wrapper, so use the pnpm scripts or a Visual 
 <summary>Windows: building inside OneDrive</summary>
 
 Rust's `target/` directory reaches several gigabytes and OneDrive will try to sync every incremental
-build artifact. Point Cargo somewhere local instead — create `.cargo/config.toml` (already gitignored):
+build artifact. Point Cargo somewhere local instead by creating `.cargo/config.toml` (already gitignored):
 
 ```toml
 [build]
@@ -179,7 +179,7 @@ target-dir = "C:/Users/you/.cargo-target/lblr"
 
 ## Contributing
 
-New printer models, symbologies and language backends are the most useful contributions — see
+New printer models, symbologies and language backends are the most useful contributions. See
 [CONTRIBUTING.md](CONTRIBUTING.md). The compiler design makes adding a third language (EPL, CPCL,
 ESC/POS) a matter of implementing one interface.
 
