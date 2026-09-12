@@ -54,9 +54,50 @@ export class TsplBuilder {
     return this.raw(`DIRECTION ${direction},${mirror}`)
   }
 
-  /** Shifts the origin. Used to correct stock that sits off-centre. */
+  /** Shifts the origin. Used to correct stock that sits off-centre. Never negative. */
   reference(xDots: number, yDots: number): this {
     return this.raw(`REFERENCE ${xDots},${yDots}`)
+  }
+
+  /**
+   * Shifts the printed image; unlike REFERENCE this takes negative values.
+   * The two-argument form is TSPL2, so a purely vertical shift uses the
+   * single-argument form every firmware understands.
+   */
+  shift(xDots: number, yDots: number): this {
+    return this.raw(xDots === 0 ? `SHIFT ${yDots}` : `SHIFT ${xDots},${yDots}`)
+  }
+
+  /** Where the label stops after printing, relative to the tear bar. */
+  offset(offsetMm: number): this {
+    return this.raw(`OFFSET ${mm(offsetMm)} mm`)
+  }
+
+  // --- maintenance -------------------------------------------------------
+
+  /** Feed one label, using the media setup already sent. */
+  formfeed(): this {
+    return this.raw('FORMFEED')
+  }
+
+  /** Move the paper forward by a number of dots. */
+  feed(dots: number): this {
+    return this.raw(`FEED ${clamp(Math.round(dots), 1, 9999)}`)
+  }
+
+  /** Move the paper backward by a number of dots. */
+  backfeed(dots: number): this {
+    return this.raw(`BACKFEED ${clamp(Math.round(dots), 1, 9999)}`)
+  }
+
+  /** Measure the gap between labels so every print starts at a label edge. */
+  gapDetect(): this {
+    return this.raw('GAPDETECT')
+  }
+
+  /** Measure the black mark on the liner. */
+  blineDetect(): this {
+    return this.raw('BLINEDETECT')
   }
 
   /** Inches per second. */
@@ -95,12 +136,20 @@ export class TsplBuilder {
     xDots: number,
     yDots: number,
     content: string,
-    options: { widthDots: number; heightDots: number; rotation?: TsplRotation; font?: string },
+    options: {
+      widthDots: number
+      heightDots: number
+      rotation?: TsplRotation
+      font?: string
+      /** TSPL2 alignment about x: 1 left, 2 centre, 3 right. Omitted means left. */
+      align?: 1 | 2 | 3
+    },
   ): this {
     const font = options.font ?? '0'
     const rotation = options.rotation ?? 0
+    const align = options.align === undefined ? '' : `${options.align},`
     return this.raw(
-      `TEXT ${xDots},${yDots},"${font}",${rotation},${options.widthDots},${options.heightDots},"${escapeTsplString(content)}"`,
+      `TEXT ${xDots},${yDots},"${font}",${rotation},${options.widthDots},${options.heightDots},${align}"${escapeTsplString(content)}"`,
     )
   }
 
@@ -213,11 +262,7 @@ export class TsplBuilder {
    * terminated with CRLF, which is what TSPL firmware expects.
    */
   toString(): string {
-    return (
-      this.lines
-        .filter((line) => !line.startsWith('; '))
-        .join('\r\n') + '\r\n'
-    )
+    return this.lines.filter((line) => !line.startsWith('; ')).join('\r\n') + '\r\n'
   }
 }
 

@@ -1,55 +1,98 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   canPrint,
+  createTemplate,
+  dotsPerMm,
+  findDesign,
+  layoutSize,
   mmToDots,
   parseTemplate,
   serializeTemplate,
+  stockLayout,
   templateFields,
   validateTemplate,
   type LabelElement,
 } from '@lblr/core'
-import { compileJob as compileTspl } from '@lblr/tspl'
-import { compileJob as compileZpl } from '@lblr/zpl'
+import { compileBatch as batchTspl, compileJob as compileTspl } from '@lblr/tspl'
+import { compileBatch as batchZpl, compileJob as compileZpl } from '@lblr/zpl'
 
+import {
+  FolderIcon,
+  LabelMarkIcon,
+  PlusIcon,
+  PrintIcon,
+  RedoIcon,
+  SaveIcon,
+  UndoIcon,
+} from './components/icons.js'
+import { DataSheet } from './components/DataSheet.js'
 import { Inspector } from './components/Inspector.js'
-import { LabelCanvas } from './components/LabelCanvas.js'
+import { LabelCanvas, RULER, drawnSize } from './components/LabelCanvas.js'
+import { NewLabelDialog, type NewLabelSpec } from './components/NewLabelDialog.js'
 import { PrintDialog } from './components/PrintDialog.js'
 import { Rail } from './components/Rail.js'
+import { chooseOpenPath, chooseSavePath, readTextFile, writeTextFile } from './lib/backend.js'
 import {
-  chooseOpenPath,
-  chooseSavePath,
-  readTextFile,
-  writeTextFile,
-} from './lib/backend.js'
-import { newElement, useDesigner } from './state/designer.js'
+  ZOOM_DEFAULT,
+  clampZoom,
+  formatZoom,
+  newElement,
+  stepZoom,
+  useDesigner,
+} from './state/designer.js'
 
 const DPI_OPTIONS = [203, 300, 600]
+
+/** Breathing room around a strip that has been zoomed to fit, in pixels. */
+const FIT_MARGIN = 72
 
 export function App() {
   const { state, dispatch, selected, update } = useDesigner()
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
   const [printing, setPrinting] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [viewport, setViewport] = useState({ width: 0, height: 0 })
 
-  const { template, dpi, zoom, language, sample } = state
+  const { template, dpi, zoom, language, sample, records, previewRow } = state
+  const [sheetOpen, setSheetOpen] = useState(false)
 
-  const issues = useMemo(
-    () => validateTemplate(template, { dpi, data: sample }),
-    [template, dpi, sample],
+  // What fills the placeholders on the canvas: the previewed sheet row when
+  // there is one, otherwise the sample values.
+  const previewed = previewRow !== null ? records[previewRow] : undefined
+  const data = useMemo(
+    () => (previewed ? { ...sample, ...previewed } : sample),
+    [sample, previewed],
   )
 
+  const issues = useMemo(() => validateTemplate(template, { dpi, data }), [template, dpi, data])
+
+  const textScale = state.textScale[language]
   const job = useMemo(() => {
     const compile = language === 'tspl' ? compileTspl : compileZpl
-    return compile(template, sample, { dpi })
-  }, [template, sample, dpi, language])
+    return compile(template, data, { dpi, textScale })
+  }, [template, data, dpi, language, textScale])
+
+  // The whole sheet as one job, only when the sheet has rows.
+  const batch = useMemo(() => {
+    if (records.length === 0) return null
+    const compile = language === 'tspl' ? batchTspl : batchZpl
+    return compile(template, records, { dpi, textScale })
+  }, [template, records, dpi, language, textScale])
 
   const fields = useMemo(() => templateFields(template), [template])
+  const pass = useMemo(
+    () => layoutSize(template.media, stockLayout(template.media)),
+    [template.media],
+  )
+  const drawn = useMemo(() => drawnSize(template), [template])
+  const across = template.media.columns ?? 1
 
   const addElement = useCallback(
     (kind: LabelElement['type']) => {
       // Drop new elements a little inside the top-left corner rather than on
       // the media edge, where they would immediately fail the bounds check.
-      dispatch({ type: 'add', element: newElement(kind, { x: 3, y: 3 }) })
+      dispatch({ type: 'add', element: newElement(kind, { x: 2, y: 2 }) })
     },
     [dispatch],
   )
@@ -78,6 +121,76 @@ export function App() {
     }
   }, [dispatch])
 
+  const startNew = useCallback(() => {
+    if (state.dirty && !window.confirm('Discard unsaved changes to this label?')) return
+    setCreating(true)
+  }, [state.dirty])
+
+  const createNew = useCallback(
+    (spec: NewLabelSpec) => {
+      const design = findDesign(spec.design)
+      const size = { width: spec.width, height: spec.height }
+      dispatch({
+        type: 'new',
+        template: createTemplate({
+          name: spec.name,
+          width: spec.width,
+          height: spec.height,
+          gap: spec.gap,
+          columns: spec.columns,
+          columnGap: spec.columnGap,
+          mediaType: spec.mediaType,
+          elements: design?.build(size) ?? [],
+        }),
+      })
+      // The design's sample values, so the canvas shows a real label at once.
+      for (const [field, value] of Object.entries(design?.sample ?? {})) {
+        dispatch({ type: 'sample', field, value: String(value ?? '') })
+      }
+      setCreating(false)
+      setMessage(
+        spec.columns > 1
+          ? `New ${spec.width} × ${spec.height} mm label, ${spec.columns} across`
+          : `New ${spec.width} × ${spec.height} mm label`,
+      )
+    },
+    [dispatch],
+  )
+
+  // --- zoom ----------------------------------------------------------------
+
+  const setZoom = useCallback(
+    (next: number) => dispatch({ type: 'zoom', zoom: clampZoom(next) }),
+    [dispatch],
+  )
+
+  const zoomBy = useCallback(
+    (factor: number) => setZoom(state.zoom * factor),
+    [setZoom, state.zoom],
+  )
+
+  /** The largest zoom at which the whole strip fits beside the rulers. */
+  const zoomToFit = useCallback(() => {
+    const availableWidth = viewport.width - RULER - FIT_MARGIN
+    const availableHeight = viewport.height - RULER - FIT_MARGIN
+    if (availableWidth <= 0 || availableHeight <= 0) return setZoom(ZOOM_DEFAULT)
+    const perMm = dotsPerMm(dpi)
+    const fit = Math.min(
+      availableWidth / (drawn.width * perMm),
+      availableHeight / (drawn.height * perMm),
+    )
+    setZoom(Math.floor(fit * 100) / 100)
+  }, [dpi, drawn.height, drawn.width, setZoom, viewport])
+
+  // Fit the strip when the stage first reports a size and whenever a
+  // different document arrives. In between, the zoom is the person's own.
+  const [fittedFor, setFittedFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (fittedFor === template.id || viewport.width === 0) return
+    setFittedFor(template.id)
+    zoomToFit()
+  }, [fittedFor, template.id, viewport.width, zoomToFit])
+
   // Keyboard shortcuts, scoped so they never fire while a field has focus.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -87,7 +200,25 @@ export function App() {
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      // While a dialog is up it owns the keyboard: Escape dismisses it and
+      // nothing else reaches the designer.
+      if (printing || creating) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          setPrinting(false)
+          setCreating(false)
+        }
+        // The designer's own shortcuts are still claimed, or a second Ctrl+P
+        // falls through to the WebView and opens the browser's print sheet
+        // on top of ours.
+        if ((event.ctrlKey || event.metaKey) && 'psno'.includes(event.key.toLowerCase())) {
+          event.preventDefault()
+        }
+        return
+      }
+
+      // A field being typed in keeps its own undo history.
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing) {
         event.preventDefault()
         dispatch({ type: event.shiftKey ? 'redo' : 'undo' })
         return
@@ -101,6 +232,35 @@ export function App() {
         event.preventDefault()
         setPrinting(true)
         return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
+        event.preventDefault()
+        startNew()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') {
+        event.preventDefault()
+        void open()
+        return
+      }
+
+      // Zoom shortcuts follow the browser convention, and must be claimed here
+      // or the WebView zooms the whole interface instead of the label.
+      if (event.ctrlKey || event.metaKey) {
+        const zoomKeys: Record<string, () => void> = {
+          '=': () => setZoom(stepZoom(zoom, 1)),
+          '+': () => setZoom(stepZoom(zoom, 1)),
+          '-': () => setZoom(stepZoom(zoom, -1)),
+          _: () => setZoom(stepZoom(zoom, -1)),
+          '0': zoomToFit,
+          '1': () => setZoom(1),
+        }
+        const run = zoomKeys[event.key]
+        if (run) {
+          event.preventDefault()
+          run()
+          return
+        }
       }
       if (typing || !state.selectedId) return
 
@@ -132,7 +292,21 @@ export function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [dispatch, dpi, save, selected, state.selectedId, update])
+  }, [
+    creating,
+    dispatch,
+    dpi,
+    open,
+    printing,
+    save,
+    selected,
+    setZoom,
+    startNew,
+    state.selectedId,
+    update,
+    zoom,
+    zoomToFit,
+  ])
 
   useEffect(() => {
     if (!message) return
@@ -145,54 +319,99 @@ export function App() {
   const warnings = issues.length - errors
 
   return (
-    <div className="app">
+    <div className={`app${sheetOpen ? ' with-sheet' : ''}`}>
       <header className="toolbar">
+        <span className="brand">
+          <span className="brand-mark">
+            <LabelMarkIcon />
+          </span>
+          lblr
+        </span>
         <input
+          className="doc-name"
           value={template.name}
-          aria-label="Template name"
-          style={{ width: 180 }}
+          aria-label="Label name"
           onChange={(event) => dispatch({ type: 'rename', name: event.target.value })}
         />
         <span className="sep" />
 
-        <button className="btn" onClick={open}>
+        <button className="btn" onClick={startNew} title="New label (Ctrl+N)">
+          <PlusIcon />
+          New
+        </button>
+        <button className="btn" onClick={open} title="Open a label (Ctrl+O)">
+          <FolderIcon />
           Open
         </button>
-        <button className="btn" onClick={save}>
+        <button className="btn" onClick={save} title="Save (Ctrl+S)">
+          <SaveIcon />
           Save{state.dirty ? ' •' : ''}
         </button>
         <span className="sep" />
+        <button
+          className="btn btn-ghost"
+          onClick={() => dispatch({ type: 'undo' })}
+          disabled={state.past.length === 0}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+        >
+          <UndoIcon />
+        </button>
+        <button
+          className="btn btn-ghost"
+          onClick={() => dispatch({ type: 'redo' })}
+          disabled={state.future.length === 0}
+          title="Redo (Ctrl+Shift+Z)"
+          aria-label="Redo"
+        >
+          <RedoIcon />
+        </button>
+        <span className="sep" />
 
-        <label className="field">
-          <span>Language</span>
-          <select
-            value={language}
-            onChange={(event) =>
-              dispatch({ type: 'language', language: event.target.value as 'tspl' | 'zpl' })
-            }
-          >
-            <option value="tspl">TSPL</option>
-            <option value="zpl">ZPL</option>
-          </select>
-        </label>
+        <div className="segments" role="group" aria-label="Printer language">
+          {(['tspl', 'zpl'] as const).map((item) => (
+            <button
+              key={item}
+              aria-pressed={language === item}
+              onClick={() => dispatch({ type: 'language', language: item })}
+            >
+              {item.toUpperCase()}
+            </button>
+          ))}
+        </div>
 
-        <label className="field">
-          <span>Resolution</span>
-          <select value={dpi} onChange={(event) => dispatch({ type: 'dpi', dpi: Number(event.target.value) })}>
-            {DPI_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option} dpi
-              </option>
-            ))}
-          </select>
-        </label>
+        <select
+          value={dpi}
+          aria-label="Printer resolution"
+          onChange={(event) => dispatch({ type: 'dpi', dpi: Number(event.target.value) })}
+        >
+          {DPI_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option} dpi
+            </option>
+          ))}
+        </select>
+
+        <button
+          className="btn"
+          onClick={() => setSheetOpen((open) => !open)}
+          aria-pressed={sheetOpen}
+          title="Rows to print, one per label"
+        >
+          Data{records.length > 0 ? ` · ${records.length}` : ''}
+        </button>
 
         <span className="spacer" />
 
-        {message ? <span className="measure">{message}</span> : null}
+        {message ? <span className="hint">{message}</span> : null}
 
-        <button className="btn btn-primary" onClick={() => setPrinting(true)}>
-          Print
+        <button
+          className="btn btn-primary"
+          onClick={() => setPrinting(true)}
+          title="Preview and print (Ctrl+P)"
+        >
+          <PrintIcon />
+          Preview &amp; print
         </button>
       </header>
 
@@ -204,35 +423,67 @@ export function App() {
         onSelect={(id) => dispatch({ type: 'select', id })}
         onToggleHidden={(element) => update(element.id, { hidden: !element.hidden })}
         onToggleLocked={(element) => update(element.id, { locked: !element.locked })}
+        onArrange={(id, index) => dispatch({ type: 'arrange', id, index })}
       />
 
       <main className="stage">
         <LabelCanvas
           template={template}
-          data={sample}
+          data={data}
           dpi={dpi}
           zoom={zoom}
           selectedId={state.selectedId}
           onSelect={(id) => dispatch({ type: 'select', id })}
           onMove={(id, x, y) => update(id, { x, y })}
+          onResize={(id, patch) => update(id, patch)}
+          onEdit={(id, value) => update(id, { value } as Partial<LabelElement>)}
           onPointer={setPointer}
+          onZoomBy={zoomBy}
+          onViewport={setViewport}
         />
+
+        <div className="stage-chip">
+          <span>
+            {template.media.width} × {template.media.height} mm
+            {across > 1 ? `, ${across} across` : ''}
+          </span>
+          <span className="sep" />
+          <span>
+            {across > 1 ? `${across} labels` : 'one label'} per pass, {pass.width} × {pass.height}{' '}
+            mm
+          </span>
+        </div>
 
         <div className="zoom">
           <button
             className="btn btn-ghost"
-            onClick={() => dispatch({ type: 'zoom', zoom: zoom - 1 })}
+            onClick={() => setZoom(stepZoom(zoom, -1))}
             aria-label="Zoom out"
+            title="Zoom out (Ctrl+−)"
           >
             −
           </button>
-          <span className="measure">{zoom}× </span>
+          <button
+            className="btn btn-ghost measure"
+            onClick={() => setZoom(1)}
+            title="One screen pixel per printer dot (Ctrl+1)"
+          >
+            {formatZoom(zoom)}
+          </button>
           <button
             className="btn btn-ghost"
-            onClick={() => dispatch({ type: 'zoom', zoom: zoom + 1 })}
+            onClick={() => setZoom(stepZoom(zoom, 1))}
             aria-label="Zoom in"
+            title="Zoom in (Ctrl+=)"
           >
             +
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={zoomToFit}
+            title="Fit the roll to the window (Ctrl+0)"
+          >
+            Fit
           </button>
         </div>
       </main>
@@ -241,13 +492,30 @@ export function App() {
         template={template}
         selected={selected}
         issues={issues}
+        fields={fields}
+        sample={sample}
         onUpdate={update}
         onRemove={(id) => dispatch({ type: 'remove', id })}
         onReorder={(id, direction) => dispatch({ type: 'reorder', id, direction })}
         onMedia={(patch) => dispatch({ type: 'media', patch })}
         onDefaults={(patch) => dispatch({ type: 'defaults', patch })}
+        onSample={(field, value) => dispatch({ type: 'sample', field, value })}
         onSelectIssue={(id) => dispatch({ type: 'select', id })}
       />
+
+      {sheetOpen ? (
+        <DataSheet
+          fields={fields}
+          records={records}
+          previewRow={previewRow}
+          onCell={(row, field, value) => dispatch({ type: 'cell', row, field, value })}
+          onAddRow={() => dispatch({ type: 'addRow' })}
+          onRemoveRow={(row) => dispatch({ type: 'removeRow', row })}
+          onReplace={(next) => dispatch({ type: 'records', records: next })}
+          onPreviewRow={(row) => dispatch({ type: 'previewRow', row })}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
 
       <footer className="status">
         <span className="measure">
@@ -272,7 +540,9 @@ export function App() {
         <span className="sep" />
         <span
           className="measure"
-          style={{ color: errors ? 'var(--error)' : warnings ? 'var(--warning)' : undefined }}
+          style={{
+            color: errors ? 'var(--error)' : warnings ? 'var(--warning)' : 'var(--ok)',
+          }}
         >
           {errors ? `${errors} error${errors === 1 ? '' : 's'}` : null}
           {errors && warnings ? ' · ' : null}
@@ -287,9 +557,24 @@ export function App() {
           commands={job.commands}
           warnings={job.warnings}
           blocked={blocked}
+          template={template}
+          data={data}
+          records={records}
+          batch={batch}
+          dpi={dpi}
+          language={language}
+          textScale={textScale}
+          onTextScale={(scale) => dispatch({ type: 'textScale', language, scale })}
+          layout={template.defaults.layout ?? {}}
+          onLayout={(layout) => dispatch({ type: 'defaults', patch: { layout } })}
+          copies={template.defaults.copies}
+          onCopies={(copies) => dispatch({ type: 'defaults', patch: { copies } })}
+          onDefaults={(patch) => dispatch({ type: 'defaults', patch })}
           onClose={() => setPrinting(false)}
         />
       ) : null}
+
+      {creating ? <NewLabelDialog onCreate={createNew} onClose={() => setCreating(false)} /> : null}
     </div>
   )
 }

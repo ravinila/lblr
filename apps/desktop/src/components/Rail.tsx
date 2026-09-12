@@ -2,28 +2,43 @@
 
 import type { LabelElement, LabelTemplate, ValidationIssue } from '@lblr/core'
 
-const ADDABLE: Array<{ kind: LabelElement['type']; label: string }> = [
-  { kind: 'text', label: 'Text' },
-  { kind: 'barcode', label: 'Barcode' },
-  { kind: 'qrcode', label: 'QR code' },
-  { kind: 'box', label: 'Box' },
-  { kind: 'line', label: 'Line' },
+import {
+  BarcodeIcon,
+  BoxIcon,
+  EyeIcon,
+  EyeOffIcon,
+  GripIcon,
+  LineIcon,
+  LockIcon,
+  QrIcon,
+  TextIcon,
+  UnlockIcon,
+  elementIcon,
+} from './icons.js'
+import { useSortable } from './useSortable.js'
+
+const ADDABLE: Array<{ kind: LabelElement['type']; label: string; icon: JSX.Element }> = [
+  { kind: 'text', label: 'Text', icon: <TextIcon /> },
+  { kind: 'barcode', label: 'Barcode', icon: <BarcodeIcon /> },
+  { kind: 'qrcode', label: 'QR code', icon: <QrIcon /> },
+  { kind: 'box', label: 'Box', icon: <BoxIcon /> },
+  { kind: 'line', label: 'Line', icon: <LineIcon /> },
 ]
 
 function describe(element: LabelElement): string {
   switch (element.type) {
     case 'text':
-      return element.value || 'empty'
+      return element.value || 'Empty text'
     case 'barcode':
-      return `${element.symbology} · ${element.value || 'empty'}`
+      return element.value ? `${element.value}` : 'Empty barcode'
     case 'qrcode':
-      return element.value || 'empty'
+      return element.value || 'Empty QR code'
     case 'box':
-      return `${element.width} × ${element.height} mm`
+      return `Box ${element.width} × ${element.height} mm`
     case 'line':
-      return `${element.length} mm`
+      return `Line ${element.length} mm`
     case 'image':
-      return `${element.width} × ${element.height} mm`
+      return `Image ${element.width} × ${element.height} mm`
   }
 }
 
@@ -35,6 +50,8 @@ export interface RailProps {
   onSelect: (id: string) => void
   onToggleHidden: (element: LabelElement) => void
   onToggleLocked: (element: LabelElement) => void
+  /** A row was dragged to a new position in the top-down list. */
+  onArrange: (id: string, index: number) => void
 }
 
 export function Rail({
@@ -45,6 +62,7 @@ export function Rail({
   onSelect,
   onToggleHidden,
   onToggleLocked,
+  onArrange,
 }: RailProps) {
   // Later in the array draws on top, so the list reads top-down like the stack.
   const stacked = [...template.elements].reverse()
@@ -56,13 +74,19 @@ export function Rail({
     }
   }
 
+  const sortable = useSortable(stacked.length, (from, to) => {
+    const element = stacked[from]
+    if (element) onArrange(element.id, to)
+  })
+
   return (
     <aside className="rail">
       <section className="panel">
-        <h2>Add</h2>
-        <div className="add-grid">
+        <h2>Add to the label</h2>
+        <div className="add-list">
           {ADDABLE.map((item) => (
-            <button key={item.kind} className="btn" onClick={() => onAdd(item.kind)}>
+            <button key={item.kind} className="add-item" onClick={() => onAdd(item.kind)}>
+              {item.icon}
               {item.label}
             </button>
           ))}
@@ -70,17 +94,27 @@ export function Rail({
       </section>
 
       <section className="panel">
-        <h2>Elements</h2>
+        <div className="panel-title">
+          <h2>On the label</h2>
+          <span className="measure">{stacked.length || ''}</span>
+        </div>
         {stacked.length === 0 ? (
-          <p className="empty">Nothing on the label yet. Add an element above.</p>
+          <p className="empty">Nothing yet. Add text, a barcode or a QR code above.</p>
         ) : (
-          <div className="stack" role="listbox" aria-label="Elements">
-            {stacked.map((element) => {
+          <div
+            ref={sortable.containerRef}
+            className={`layers${sortable.dragging !== null ? ' sorting' : ''}`}
+            role="listbox"
+            aria-label="Elements, top to bottom"
+          >
+            {stacked.map((element, index) => {
               const severity = worst.get(element.id)
+              const dragging = sortable.dragging === index
               return (
                 <div
                   key={element.id}
-                  className="layer"
+                  {...sortable.rowProps(index)}
+                  className={`layer${dragging ? ' dragging' : ''}`}
                   role="option"
                   tabIndex={0}
                   aria-selected={element.id === selectedId}
@@ -92,45 +126,39 @@ export function Rail({
                     }
                   }}
                 >
-                  <span
-                    className="measure"
-                    style={{
-                      color:
-                        severity === 'error'
-                          ? 'var(--error)'
-                          : severity === 'warning'
-                            ? 'var(--warning)'
-                            : 'var(--ink-faint)',
-                    }}
-                    aria-hidden="true"
-                  >
-                    {severity ? '!' : '·'}
+                  <span className="grip" aria-hidden="true">
+                    <GripIcon />
                   </span>
-                  <span className="layer-name">
+                  {elementIcon(element.type)}
+                  <span className="layer-name" style={{ opacity: element.hidden ? 0.5 : 1 }}>
                     {element.name ?? describe(element)}
-                    <span className="layer-kind"> {element.type}</span>
                   </span>
+                  {severity ? (
+                    <span className={`layer-flag ${severity}`} aria-label={severity} />
+                  ) : null}
                   <button
                     className="icon-btn"
                     title={element.hidden ? 'Show on the label' : 'Hide from the label'}
                     aria-label={element.hidden ? 'Show on the label' : 'Hide from the label'}
+                    aria-pressed={Boolean(element.hidden)}
                     onClick={(event) => {
                       event.stopPropagation()
                       onToggleHidden(element)
                     }}
                   >
-                    {element.hidden ? '◌' : '◉'}
+                    {element.hidden ? <EyeOffIcon /> : <EyeIcon />}
                   </button>
                   <button
                     className="icon-btn"
                     title={element.locked ? 'Allow dragging' : 'Lock in place'}
                     aria-label={element.locked ? 'Allow dragging' : 'Lock in place'}
+                    aria-pressed={Boolean(element.locked)}
                     onClick={(event) => {
                       event.stopPropagation()
                       onToggleLocked(element)
                     }}
                   >
-                    {element.locked ? '▣' : '▢'}
+                    {element.locked ? <LockIcon /> : <UnlockIcon />}
                   </button>
                 </div>
               )

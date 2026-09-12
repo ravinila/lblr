@@ -8,6 +8,7 @@
  * enough to lay out with, not as a guarantee.
  */
 
+import { TEXT_ASPECT, lineGapFor, textLineWidth, wrapText } from './text.js'
 import type { BarcodeElement, LabelElement, LinearSymbology, QrElement } from './types.js'
 
 export interface Bounds {
@@ -17,12 +18,8 @@ export interface Bounds {
   height: number
 }
 
-/**
- * Width of one character relative to its cap height in the printers' internal
- * scalable font, which is a bold condensed grotesque on both TSPL and ZPL
- * devices. Measured from print samples rather than a font metric table.
- */
-const CONDENSED_ASPECT = 0.6
+/** Kept for the barcode estimates; text sizing lives in text.ts now. */
+const CONDENSED_ASPECT = TEXT_ASPECT
 
 /** Height of the human-readable line printed under a barcode. */
 const HUMAN_READABLE_MM = 2.5
@@ -59,13 +56,17 @@ export function elementBounds(element: LabelElement): Bounds {
 export function unrotatedSize(element: LabelElement): { width: number; height: number } {
   switch (element.type) {
     case 'text': {
-      const lines = element.value.split('\n')
-      const longest = lines.reduce((max, line) => Math.max(max, line.length), 0)
-      const naturalWidth = longest * element.fontSize * CONDENSED_ASPECT
-      const lineHeight = element.fontSize + (element.lineGap ?? element.fontSize * 0.3)
+      // The same line breaks the compilers and the canvas use.
+      const lines = wrapText(element.value, element.fontSize, element.maxWidth)
+      const widest = lines.reduce(
+        (max, line) => Math.max(max, textLineWidth(line, element.fontSize)),
+        0,
+      )
+      const wrapAt =
+        element.maxWidth !== undefined && element.maxWidth > 0 ? element.maxWidth : null
       return {
-        width: element.maxWidth ?? naturalWidth,
-        height: lines.length * lineHeight - (element.lineGap ?? element.fontSize * 0.3),
+        width: wrapAt ?? widest,
+        height: lines.length * element.fontSize + (lines.length - 1) * lineGapFor(element),
       }
     }
 

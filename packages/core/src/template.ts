@@ -18,6 +18,10 @@ export interface CreateTemplateInput {
   height: number
   /** Gap between labels. Defaults to 2 mm, the most common die-cut stock. */
   gap?: number
+  /** Labels across the roll. Defaults to 1. */
+  columns?: number
+  /** Space between columns. Defaults to `gap`. */
+  columnGap?: number
   mediaType?: MediaSpec['type']
   elements?: LabelElement[]
   defaults?: Partial<PrintDefaults>
@@ -35,7 +39,8 @@ export function createTemplate(input: CreateTemplateInput): LabelTemplate {
       height: input.height,
       gap: input.gap ?? 2,
       type: input.mediaType ?? 'gap',
-      columns: 1,
+      columns: Math.max(1, Math.floor(input.columns ?? 1)),
+      ...(input.columnGap === undefined ? {} : { columnGap: input.columnGap }),
     },
     defaults: { ...DEFAULT_PRINT_DEFAULTS, ...input.defaults },
     elements: input.elements ?? [],
@@ -59,7 +64,28 @@ export function parseTemplate(json: string): LabelTemplate {
   if (!candidate.media || !Array.isArray(candidate.elements)) {
     throw new Error('Template is missing media or elements')
   }
-  return candidate as LabelTemplate
+  return migrate(candidate as LabelTemplate)
+}
+
+/**
+ * Files written before the roll carried its own column count kept "labels
+ * across" on the print layout. The roll is the truth now, so anything found
+ * there moves onto the media and the layout keeps only its rows.
+ */
+function migrate(template: LabelTemplate): LabelTemplate {
+  const layout = template.defaults?.layout
+  if (!layout || (layout.columns === undefined && layout.columnGap === undefined)) return template
+
+  const { columns, columnGap, ...rest } = layout
+  const media = { ...template.media }
+  if (columns !== undefined && (media.columns ?? 1) <= 1) media.columns = Math.max(1, columns)
+  if (columnGap !== undefined && media.columnGap === undefined) media.columnGap = columnGap
+
+  const defaults = { ...template.defaults }
+  if (rest.rows !== undefined || rest.rowGap !== undefined) defaults.layout = rest
+  else delete defaults.layout
+
+  return { ...template, media, defaults }
 }
 
 export function serializeTemplate(template: LabelTemplate): string {

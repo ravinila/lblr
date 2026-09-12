@@ -64,28 +64,34 @@ export async function printJob(
   jobName: string,
 ): Promise<void> {
   if (!isDesktop()) {
-    throw new Error('Printing needs the desktop app. Run `pnpm dev` instead of the browser preview.')
+    throw new Error(
+      'Printing needs the desktop app. Run `pnpm dev` instead of the browser preview.',
+    )
   }
   return invoke<void>('print_job', { destination, commands, jobName })
 }
 
 /** Ask for a path to save to. Returns null when the person cancels. */
-export async function chooseSavePath(defaultName: string): Promise<string | null> {
-  if (!isDesktop()) return null
-  const { save } = await import('@tauri-apps/plugin-dialog')
-  return save({
-    defaultPath: defaultName,
-    filters: [{ name: 'Label template', extensions: ['lblr', 'json'] }],
-  })
+export type FileKind = 'label' | 'data'
+
+const FILTERS: Record<FileKind, { name: string; extensions: string[] }[]> = {
+  label: [{ name: 'Label template', extensions: ['lblr', 'json'] }],
+  data: [{ name: 'Data', extensions: ['csv', 'tsv', 'txt'] }],
 }
 
-export async function chooseOpenPath(): Promise<string | null> {
+export async function chooseSavePath(
+  defaultName: string,
+  kind: FileKind = 'label',
+): Promise<string | null> {
+  if (!isDesktop()) return null
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  return save({ defaultPath: defaultName, filters: FILTERS[kind] })
+}
+
+export async function chooseOpenPath(kind: FileKind = 'label'): Promise<string | null> {
   if (!isDesktop()) return null
   const { open } = await import('@tauri-apps/plugin-dialog')
-  const picked = await open({
-    multiple: false,
-    filters: [{ name: 'Label template', extensions: ['lblr', 'json'] }],
-  })
+  const picked = await open({ multiple: false, filters: FILTERS[kind] })
   return typeof picked === 'string' ? picked : null
 }
 

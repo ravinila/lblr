@@ -110,8 +110,7 @@ function validateDefaults(template: LabelTemplate, issues: ValidationIssue[]): v
     issues.push({
       severity: 'warning',
       code: 'print/darkness-speed',
-      message:
-        'High darkness at high speed smears on most media. Drop the speed or the darkness.',
+      message: 'High darkness at high speed smears on most media. Drop the speed or the darkness.',
     })
   }
   if (copies < 1) {
@@ -286,10 +285,7 @@ function validateBarcode(
 }
 
 /** Returns a message when the value cannot be encoded, or null when it can. */
-export function checkSymbologyContent(
-  symbology: LinearSymbology,
-  value: string,
-): string | null {
+export function checkSymbologyContent(symbology: LinearSymbology, value: string): string | null {
   if (value.length === 0) return 'Barcode has no content.'
 
   switch (symbology) {

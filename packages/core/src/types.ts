@@ -118,12 +118,7 @@ export interface ImageElement extends BaseElement {
 }
 
 export type LabelElement =
-  | TextElement
-  | BarcodeElement
-  | QrElement
-  | BoxElement
-  | LineElement
-  | ImageElement
+  TextElement | BarcodeElement | QrElement | BoxElement | LineElement | ImageElement
 
 export type ElementType = LabelElement['type']
 
@@ -138,8 +133,33 @@ export interface MediaSpec {
   /** Distance from the gap to the start of the next label. Usually 0. */
   gapOffset?: Mm
   type: MediaType
-  /** Labels across the web. Most desktop stock is 1. */
+  /**
+   * Labels across the web. Most desktop stock is 1; small labels often come
+   * two, three or four across. Every print pass covers the whole web.
+   */
   columns?: number
+  /** Space between columns on multi-column stock. Defaults to `gap`. */
+  columnGap?: Mm
+}
+
+/**
+ * How many labels one print pass covers.
+ *
+ * Multi-column stock carries two or three labels side by side across the web,
+ * and a run of identical labels can be laid out several rows deep so the
+ * printer burns them in one pass. The printer sees the whole grid as a single
+ * label of the combined size; the template is stamped into each cell at an
+ * offset. Gaps default to the media gap.
+ */
+export interface PrintLayout {
+  /** Labels across the web. Defaults to the stock's own column count. */
+  columns?: number
+  /** Labels down, printed as one pass. Defaults to 1. */
+  rows?: number
+  /** Horizontal space between columns. Defaults to `media.gap`. */
+  columnGap?: Mm
+  /** Vertical space between rows. Defaults to `media.gap`. */
+  rowGap?: Mm
 }
 
 export interface PrintDefaults {
@@ -156,9 +176,19 @@ export interface PrintDefaults {
    */
   direction: 0 | 1
   copies: number
-  /** Shift the whole label, for stock that is misaligned in the printer. */
+  /**
+   * Shift the whole label, for stock that is misaligned in the printer.
+   * Negative values pull it left or up.
+   */
   offsetX?: Mm
   offsetY?: Mm
+  /**
+   * Where the label stops after printing, relative to the printer's tear bar.
+   * Positive feeds further out; negative holds it back.
+   */
+  tearOffset?: Mm
+  /** Labels per pass. Omitted means a single label. */
+  layout?: PrintLayout
 }
 
 export interface LabelTemplate {
@@ -193,4 +223,12 @@ export interface CompileOptions {
   /** Override darkness and speed at print time without editing the template. */
   darkness?: number
   speed?: number
+  /** Overrides the template's own print layout. */
+  layout?: PrintLayout
+  /**
+   * Correction for printers whose built-in font prints larger or smaller than
+   * the dot size asked for. Multiplies the height and width arguments sent
+   * with every text. Omitted means the printer is trusted.
+   */
+  textScale?: { height: number; width: number }
 }

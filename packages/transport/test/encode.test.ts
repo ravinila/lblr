@@ -4,9 +4,9 @@ import { EncodingError, encodeCommands, toBytes } from '../src/encode.js'
 
 describe('encodeCommands', () => {
   it('maps ASCII one character to one byte', () => {
-    expect(Array.from(encodeCommands('SIZE 50 mm,25 mm\r\n'))).toEqual([
-      ...'SIZE 50 mm,25 mm\r\n',
-    ].map((c) => c.charCodeAt(0)))
+    expect(Array.from(encodeCommands('SIZE 50 mm,25 mm\r\n'))).toEqual(
+      [...'SIZE 50 mm,25 mm\r\n'].map((c) => c.charCodeAt(0)),
+    )
   })
 
   it('defaults to UTF-8, matching the CODEPAGE UTF-8 the compilers emit', () => {

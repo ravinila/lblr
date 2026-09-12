@@ -35,9 +35,24 @@ The same template renders in the designer and on the printer because both consum
 - **Native barcodes.** Emits the printer's own `BARCODE`/`^BC` commands rather than images — sharper,
   and an order of magnitude faster to transmit.
 - **True-dpi preview.** The canvas renders at the target device resolution, so what you see is what burns.
-- **Data binding.** `{{sku}}` placeholders filled from CSV, Excel or JSON for batch and serialised runs.
+- **Data binding.** `{{sku}}` placeholders filled from the built-in data sheet: paste rows from a
+  spreadsheet or import a CSV, preview any row on the canvas, and print the whole sheet as one job.
+- **Starter designs.** New labels begin from a gallery of designs that lay themselves out for the
+  chosen size: product tag, QR tag, price tag, address, shipping and framed text.
+- **A real editor.** Resize with handles, hold Alt to scale from the centre, double-click text to
+  edit it in place, drag rows to restack, and snap to smart guides while moving.
 - **Direct printing.** Windows spooler RAW, TCP port 9100, and USB — no print dialog, no scaling.
 - **Millimetre-native.** Authoring is in mm; dot conversion happens once, at compile time.
+- **Stock presets.** New labels start from the die-cut sizes suppliers actually sell, 25 × 15 up to 4 × 6 in.
+- **Multi-column rolls.** Tell the label how many sit across the roll and what separates them. The
+  designer draws the whole strip on its liner, the print preview shows one pass exactly as the
+  printer will burn it, and the printer sees a single label of the combined size.
+- **Text size check.** Some printers draw their built-in font larger than the dot size asked for.
+  Print the check once, measure it with a ruler, and every text is corrected from then on.
+- **Printer setup from the dialog.** Calibrate the gap sensor, feed one label, set where the
+  label stops against the tear bar, and shift the print in any direction, all saved with the label.
+- **Remembers where you were.** The document, its sample values and the printer choice survive a
+  restart.
 
 ## Install
 
@@ -51,9 +66,9 @@ import { compile } from '@lblr/tspl'
 
 const template = createTemplate({
   name: 'part-tag',
-  width: 50,          // mm
-  height: 25,         // mm
-  gap: 2,             // mm between labels
+  width: 50, // mm
+  height: 25, // mm
+  gap: 2, // mm between labels
   elements: [
     text({ x: 3, y: 3, value: '{{name}}', fontSize: 3.5, bold: true }),
     barcode({ x: 3, y: 10, value: '{{sku}}', symbology: 'code128', height: 10 }),
@@ -70,20 +85,34 @@ import { printTcp } from '@lblr/transport'
 await printTcp('192.168.1.50', 9100, commands)
 ```
 
+## Designer shortcuts
+
+| Keys                        | Action                                          |
+| --------------------------- | ----------------------------------------------- |
+| Ctrl + wheel                | Zoom the label                                  |
+| Ctrl + `=` / Ctrl + `-`     | Zoom in / out a step                            |
+| Ctrl + `0`                  | Fit the roll to the window                      |
+| Ctrl + `1`                  | One screen pixel per printer dot                |
+| Ctrl + N / O / S / P        | New, open, save, preview and print              |
+| Ctrl + Z / Ctrl + Shift + Z | Undo / redo                                     |
+| Arrows / Shift + arrows     | Nudge the selection by one dot / one millimetre |
+
 ## Which language does my printer speak?
 
 Hold **FEED** while powering the printer on. It prints a configuration label naming the firmware and
 active command language.
 
-| Printer family | Language |
-|---|---|
-| TSC, TVS Electronics, Godex, Rongta | TSPL / TSPL2 |
-| Zebra | ZPL II |
-| Honeywell/Intermec, Argox | often both, switchable |
+| Printer family                      | Language               |
+| ----------------------------------- | ---------------------- |
+| TSC, TVS Electronics, Godex, Rongta | TSPL / TSPL2           |
+| Zebra                               | ZPL II                 |
+| Honeywell/Intermec, Argox           | often both, switchable |
 
 Many non-Zebra printers also ship a ZPL emulation mode. If yours does, either backend works.
 
-Verified so far: **TVS Electronics LP 46 Neo** (203 dpi). Reports for other models are very welcome —
+Verified so far: **TVS Electronics LP 46 Neo** (203 dpi). Its firmware draws the built-in font at
+roughly twice the requested size and wraps `BLOCK` text unreliably, so lblr breaks lines itself
+and ships a text size check to measure the correction. Reports for other models are very welcome —
 open an issue with your configuration label and we'll add it.
 
 ## Repository layout
@@ -99,6 +128,7 @@ lblr/
 │   └── desktop/     Tauri 2 + React designer
 │       ├── src/         the canvas, inspector and print dialog
 │       └── src-tauri/   Rust: printer discovery and raw byte transport
+├── examples/        label files to open in the designer
 └── scripts/
     └── with-msvc.mjs    picks a working MSVC toolchain on Windows
 ```
@@ -126,7 +156,7 @@ works there, and the print dialog says so rather than failing quietly.
 <summary>Windows: several Visual Studio installs</summary>
 
 `pnpm dev` and `pnpm build` route cargo through `scripts/with-msvc.mjs`. rustc and cc-rs both pick the
-*newest* Visual Studio install they can find, so a newer install with an incomplete C++ workload breaks
+_newest_ Visual Studio install they can find, so a newer install with an incomplete C++ workload breaks
 the build — `LNK1104: cannot open msvcrt.lib`, or `C1083: Cannot open include file: 'excpt.h'`. The
 wrapper asks vswhere for an install that actually carries the x64 C++ tools and seeds the environment
 from that one.
@@ -144,6 +174,7 @@ build artifact. Point Cargo somewhere local instead — create `.cargo/config.to
 [build]
 target-dir = "C:/Users/you/.cargo-target/lblr"
 ```
+
 </details>
 
 ## Contributing

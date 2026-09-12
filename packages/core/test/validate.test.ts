@@ -73,9 +73,7 @@ describe('template validation', () => {
       name: 'quiet',
       width: 60,
       height: 25,
-      elements: [
-        barcode({ x: 0.5, y: 5, value: '123456', symbology: 'code128', height: 10 }),
-      ],
+      elements: [barcode({ x: 0.5, y: 5, value: '123456', symbology: 'code128', height: 10 })],
     })
     expect(codes(validateTemplate(template, { dpi: 203 }))).toContain('barcode/quiet-zone')
   })

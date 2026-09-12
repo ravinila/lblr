@@ -1,34 +1,73 @@
 /**
- * The label, at true device resolution.
+ * The roll, at true device resolution.
  *
  * At zoom 1 one printer dot is one screen pixel — that is the whole claim the
  * app makes, so it is the thing the canvas is built around rather than an
  * afterthought. Zooming multiplies that ratio; it never resamples through some
  * unrelated CSS scale.
  *
+ * What is drawn is the stock, not an abstract label: a strip of liner with as
+ * many labels across as the roll carries, and the start of the next row below,
+ * so the gap between rows is something you can see rather than a number. The
+ * first cell is the one being edited. The others are live copies of it,
+ * because that is what the printer will produce, and seeing a 25 × 25 label
+ * as one of four squares on a strip is the difference between designing on
+ * paper and designing in the void.
+ *
  * Past 4× a dot becomes large enough to see, and the dot grid fades in. It is
- * the one deliberate flourish in the interface, and it earns its place: it is
- * the moment the abstraction drops and you are looking at the actual raster the
- * printhead will burn, which is exactly when a half-dot misalignment matters.
+ * the moment the abstraction drops and you are looking at the actual raster
+ * the printhead will burn, which is exactly when a half-dot misalignment
+ * matters.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
+import type Konva from 'konva'
+import { Group, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva'
 import {
   bindElement,
   dotsPerMm,
+  elementBounds,
+  snapToGuides,
+  type Guide,
+  layoutCells,
+  layoutSize,
+  resolveLayout,
+  linePitch,
   snapMm,
   type DataRecord,
+  type LabelElement,
   type LabelTemplate,
 } from '@lblr/core'
 
-import { ElementShape } from './ElementShape.js'
+import { CAP_RATIO, ElementShape, TEXT_FONT_FAMILY, resizeHandles } from './ElementShape.js'
+import { InlineEditor } from './InlineEditor.js'
 
-const RULER = 22
-const MAT = '#18201e'
-const RULER_BG = '#212a28'
-const HAIRLINE = '#33403d'
-const INSTRUMENT = '#4cc3f0'
+export const RULER = 24
+const BENCH = '#dfe3e8'
+const RULER_BG = '#f6f7f9'
+const RULER_LINE = '#cdd3db'
+const TICK = '#9aa3ae'
+const TICK_TEXT = '#5f6975'
+const LINER = '#efe8d8'
+const LINER_EDGE = '#d9d0ba'
+const PAPER = '#ffffff'
+const CUT = '#c9cfd6'
+const INSTRUMENT = '#2563eb'
+const GUIDE = '#ff2d7a'
+const MONO = 'Cascadia Mono, Consolas, monospace'
+
+/** Liner showing beyond the labels on either side, in millimetres. */
+const WEB_MARGIN = 1.5
+
+/**
+ * The area the canvas draws for a template, in millimetres: one print pass
+ * plus the row that follows it. Fit-to-window sizes against this.
+ */
+export function drawnSize(template: LabelTemplate): { width: number; height: number } {
+  const layout = resolveLayout(template)
+  const pass = layoutSize(template.media, layout)
+  return { width: pass.width, height: pass.height + layout.rowGap + template.media.height }
+}
 
 export interface LabelCanvasProps {
   template: LabelTemplate
@@ -38,7 +77,15 @@ export interface LabelCanvasProps {
   selectedId: string | null
   onSelect: (id: string | null) => void
   onMove: (id: string, x: number, y: number) => void
+  /** A resize handle was released on an element. */
+  onResize: (id: string, patch: Partial<LabelElement>) => void
+  /** A value was edited in place. */
+  onEdit: (id: string, value: string) => void
   onPointer: (position: { x: number; y: number } | null) => void
+  /** Ctrl+wheel. `factor` multiplies the current zoom. */
+  onZoomBy: (factor: number) => void
+  /** The stage's pixel size, so the app can compute a zoom that fits. */
+  onViewport?: (size: { width: number; height: number }) => void
 }
 
 /** Ruler ticks chosen so labels never collide at the current scale. */
@@ -57,29 +104,141 @@ export function LabelCanvas({
   selectedId,
   onSelect,
   onMove,
+  onResize,
+  onEdit,
   onPointer,
+  onZoomBy,
+  onViewport,
 }: LabelCanvasProps) {
   const host = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
+
+  // In-place editing: the id of the element whose value is open in an
+  // editor laid over the stage. Only elements with a value qualify.
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  // Smart guides: computed on every drag step, drawn once per frame.
+  const [guides, setGuides] = useState<Guide[]>([])
+  const pendingGuides = useRef<Guide[]>([])
+  const guideFrame = useRef(0)
+  const showGuides = (next: Guide[]) => {
+    pendingGuides.current = next
+    if (!guideFrame.current) {
+      guideFrame.current = requestAnimationFrame(() => {
+        guideFrame.current = 0
+        setGuides(pendingGuides.current)
+      })
+    }
+  }
+  const snapDrag = (id: string, x: number, y: number): { x: number; y: number } => {
+    const element = template.elements.find((item) => item.id === id)
+    if (!element) return { x, y }
+    const moving = elementBounds({ ...element, x, y })
+    const others = template.elements
+      .filter((item) => item.id !== id && !item.hidden)
+      .map((item) => elementBounds(item))
+    // Six screen pixels of reach, whatever the zoom.
+    const result = snapToGuides(
+      moving,
+      others,
+      { width: template.media.width, height: template.media.height },
+      6 / (dotsPerMm(dpi) * zoom),
+    )
+    showGuides(result.guides)
+    return { x: x + (result.x - moving.x), y: y + (result.y - moving.y) }
+  }
+  const editing = template.elements.find((element) => element.id === editingId)
+  useEffect(() => {
+    if (editingId && !editing) setEditingId(null)
+  }, [editingId, editing])
+
+  // The transformer needs the Konva node of whatever is selected. Nodes
+  // register themselves by element id as they mount.
+  const nodes = useRef(new Map<string, Konva.Group>())
+  const transformer = useRef<Konva.Transformer>(null)
+  const selectedElement = template.elements.find((element) => element.id === selectedId)
+  const handles = selectedElement ? resizeHandles(selectedElement) : null
+
+  // Alt while resizing scales about the element's centre, as in every
+  // image editor. Shift is Konva's own: it flips the keep-ratio rule.
+  const [fromCentre, setFromCentre] = useState(false)
+  useEffect(() => {
+    const track = (event: KeyboardEvent) => setFromCentre(event.altKey)
+    const clear = () => setFromCentre(false)
+    window.addEventListener('keydown', track)
+    window.addEventListener('keyup', track)
+    window.addEventListener('blur', clear)
+    return () => {
+      window.removeEventListener('keydown', track)
+      window.removeEventListener('keyup', track)
+      window.removeEventListener('blur', clear)
+    }
+  }, [])
+  useEffect(() => {
+    const tr = transformer.current
+    if (!tr) return
+    const node = selectedId ? nodes.current.get(selectedId) : undefined
+    const usable = node && selectedElement && !selectedElement.locked && !selectedElement.hidden
+    tr.nodes(usable ? [node] : [])
+    tr.getLayer()?.batchDraw()
+  }, [selectedId, selectedElement, template.elements, zoom, dpi])
 
   useLayoutEffect(() => {
     const element = host.current
     if (!element) return
 
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height })
+      if (!entry) return
+      const next = {
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      }
+      setSize(next)
+      onViewport?.(next)
     })
     observer.observe(element)
     return () => observer.disconnect()
+  }, [onViewport])
+
+  // Ctrl+wheel zooms the label, and must be stopped here before the WebView
+  // reads it as a request to zoom the whole interface. Konva registers its
+  // wheel listener non-passive, so preventDefault is honoured.
+  const zoomByRef = useRef(onZoomBy)
+  zoomByRef.current = onZoomBy
+  useEffect(() => {
+    const element = host.current
+    if (!element) return
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      // Trackpads report small deltas continuously; mouse wheels report ~100
+      // per notch. Scaling by the delta keeps both feeling proportional.
+      const factor = Math.exp(-event.deltaY * 0.0025)
+      zoomByRef.current(factor)
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
   }, [])
 
-  const pxPerMm = dotsPerMm(dpi) * zoom
-  const labelWidth = template.media.width * pxPerMm
-  const labelHeight = template.media.height * pxPerMm
+  const { media } = template
+  const layout = resolveLayout(template)
+  const cells = layoutCells(media, layout)
+  const pass = layoutSize(media, layout)
+  const drawn = drawnSize(template)
+  // Where the row after this pass begins: the gap is what shows between.
+  const nextRowY = pass.height + layout.rowGap
 
-  // Centre the label in whatever space is left beside the rulers.
-  const originX = Math.max(RULER, RULER + (size.width - RULER - labelWidth) / 2)
-  const originY = Math.max(RULER, RULER + (size.height - RULER - labelHeight) / 2)
+  const pxPerMm = dotsPerMm(dpi) * zoom
+  const labelWidth = media.width * pxPerMm
+  const labelHeight = media.height * pxPerMm
+  const passWidth = pass.width * pxPerMm
+  const drawnHeight = drawn.height * pxPerMm
+
+  // Centre the whole strip in whatever space is left beside the rulers. The
+  // origin is the top-left of the first label, which is what the rulers and
+  // the pointer readout measure from.
+  const originX = Math.max(RULER + 24, RULER + (size.width - RULER - passWidth) / 2)
+  const originY = Math.max(RULER + 24, RULER + (size.height - RULER - drawnHeight) / 2)
 
   const step = tickStep(pxPerMm)
   const showDots = zoom >= 4
@@ -92,10 +251,10 @@ export function LabelCanvas({
     return () => window.clearTimeout(timer)
   }, [showDots])
 
-  const ticks: number[] = []
-  for (let mm = 0; mm <= Math.max(template.media.width, template.media.height); mm += step) {
-    ticks.push(mm)
-  }
+  const xTicks: number[] = []
+  for (let mm = 0; mm <= pass.width + 1e-6; mm += step) xTicks.push(mm)
+  const yTicks: number[] = []
+  for (let mm = 0; mm <= drawn.height + 1e-6; mm += step) yTicks.push(mm)
 
   const dotPitch = pxPerMm / dotsPerMm(dpi) // one dot, in screen pixels
   const dotLines: number[][] = []
@@ -104,129 +263,311 @@ export function LabelCanvas({
     for (let y = dotPitch; y < labelHeight; y += dotPitch) dotLines.push([0, y, labelWidth, y])
   }
 
+  const webMargin = WEB_MARGIN * pxPerMm
+  const rowMargin = (media.type === 'continuous' ? 0 : layout.rowGap / 2) * pxPerMm
+  const bound = template.elements.map((element) => bindElement(element, data))
+
   return (
     <div ref={host} className="stage-host" style={{ position: 'absolute', inset: 0 }}>
-      <Stage
-        width={size.width}
-        height={size.height}
-        onMouseDown={(event) => {
-          // A click on bare mat clears the selection; clicks on a shape are
-          // stopped by the shape itself.
-          if (event.target === event.target.getStage()) onSelect(null)
-        }}
-        onMouseMove={(event) => {
-          const point = event.target.getStage()?.getPointerPosition()
-          if (!point) return onPointer(null)
-          onPointer({ x: (point.x - originX) / pxPerMm, y: (point.y - originY) / pxPerMm })
-        }}
-        onMouseLeave={() => onPointer(null)}
-      >
-        <Layer listening={false}>
-          <Rect x={0} y={0} width={size.width} height={size.height} fill={MAT} />
-        </Layer>
+      {/* Konva draws stroked, shadowed shapes through a buffer canvas the size
+          of the stage, and a 0 × 0 buffer throws. So nothing is drawn until
+          the resize observer has reported a real size. */}
+      {size.width > 0 && size.height > 0 ? (
+        <Stage
+          width={size.width}
+          height={size.height}
+          onMouseDown={(event) => {
+            // A click on bare bench clears the selection; clicks on a shape are
+            // stopped by the shape itself.
+            if (event.target === event.target.getStage()) onSelect(null)
+          }}
+          onMouseMove={(event) => {
+            const point = event.target.getStage()?.getPointerPosition()
+            if (!point) return onPointer(null)
+            onPointer({
+              x: (point.x - originX) / pxPerMm,
+              y: (point.y - originY) / pxPerMm,
+            })
+          }}
+          onMouseLeave={() => onPointer(null)}
+        >
+          <Layer listening={false}>
+            <Rect x={0} y={0} width={size.width} height={size.height} fill={BENCH} />
+          </Layer>
 
-        {/* The label itself: the only bright object on the bench. */}
-        <Layer x={originX} y={originY}>
-          <Rect
-            x={0}
-            y={0}
-            width={labelWidth}
-            height={labelHeight}
-            fill="#ffffff"
-            shadowColor="#000000"
-            shadowBlur={18}
-            shadowOpacity={0.45}
-            shadowOffsetY={4}
-            listening={false}
-          />
-
-          {dotsVisible ? (
-            <Group opacity={0.5} listening={false}>
-              {dotLines.map((points, index) => (
-                <Line key={index} points={points} stroke="#dbe4e1" strokeWidth={1} />
-              ))}
-            </Group>
-          ) : null}
-
-          {template.elements.map((element) => (
-            <ElementShape
-              key={element.id}
-              element={bindElement(element, data)}
-              pxPerMm={pxPerMm}
-              dpi={dpi}
-              selected={element.id === selectedId}
-              onSelect={() => onSelect(element.id)}
-              onMove={(x, y) => onMove(element.id, snapMm(x, dpi), snapMm(y, dpi))}
+          <Layer x={originX} y={originY}>
+            {/* The liner: the strip of backing the labels sit on. */}
+            <Rect
+              x={-webMargin}
+              y={-rowMargin}
+              width={passWidth + webMargin * 2}
+              height={drawnHeight + rowMargin * 2}
+              fill={LINER}
+              stroke={LINER_EDGE}
+              strokeWidth={1}
+              shadowColor="#000000"
+              shadowBlur={22}
+              shadowOpacity={0.22}
+              shadowOffsetY={6}
+              listening={false}
             />
-          ))}
 
-          {/* Drawn last so the media edge stays visible over dark artwork. */}
-          <Rect
-            x={0}
-            y={0}
-            width={labelWidth}
-            height={labelHeight}
-            stroke={HAIRLINE}
-            strokeWidth={1}
-            listening={false}
-          />
-        </Layer>
+            {cells.map((cell) => {
+              const active = cell.column === 0 && cell.row === 0
+              return (
+                <Group
+                  key={`${cell.column},${cell.row}`}
+                  x={cell.dx * pxPerMm}
+                  y={cell.dy * pxPerMm}
+                >
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={labelWidth}
+                    height={labelHeight}
+                    fill={PAPER}
+                    listening={false}
+                  />
 
-        <Layer listening={false}>
-          <Rect x={0} y={0} width={size.width} height={RULER} fill={RULER_BG} />
-          <Rect x={0} y={0} width={RULER} height={size.height} fill={RULER_BG} />
-          <Line points={[0, RULER + 0.5, size.width, RULER + 0.5]} stroke={HAIRLINE} strokeWidth={1} />
-          <Line points={[RULER + 0.5, 0, RULER + 0.5, size.height]} stroke={HAIRLINE} strokeWidth={1} />
+                  {active && dotsVisible ? (
+                    <Group opacity={0.5} listening={false}>
+                      {dotLines.map((points, index) => (
+                        <Line key={index} points={points} stroke="#dbe4e1" strokeWidth={1} />
+                      ))}
+                    </Group>
+                  ) : null}
 
-          {ticks.map((mm) => {
-            const x = originX + mm * pxPerMm
-            if (mm > template.media.width || x > size.width) return null
-            return (
-              <Group key={`x${mm}`}>
-                <Line points={[x, RULER - 5, x, RULER]} stroke="#7d908c" strokeWidth={1} />
-                <Text
-                  x={x + 3}
-                  y={5}
-                  text={String(mm)}
-                  fontSize={10}
-                  fontFamily="Cascadia Mono, Consolas, monospace"
-                  fill="#92a5a0"
-                />
-              </Group>
-            )
-          })}
+                  {active ? (
+                    <>
+                      {template.elements.map((element, index) => (
+                        <ElementShape
+                          key={element.id}
+                          ref={(node) => {
+                            if (node) nodes.current.set(element.id, node)
+                            else nodes.current.delete(element.id)
+                          }}
+                          element={bound[index] ?? element}
+                          pxPerMm={pxPerMm}
+                          dpi={dpi}
+                          selected={element.id === selectedId}
+                          label={{ width: media.width, height: media.height }}
+                          onSelect={() => onSelect(element.id)}
+                          onMove={(x, y) => {
+                            showGuides([])
+                            onMove(element.id, snapMm(x, dpi), snapMm(y, dpi))
+                          }}
+                          onDragSnap={(x, y) => snapDrag(element.id, x, y)}
+                          onResize={(patch) => onResize(element.id, patch)}
+                          editing={editingId === element.id}
+                          onEdit={() => {
+                            if ('value' in element && !element.locked) setEditingId(element.id)
+                          }}
+                        />
+                      ))}
+                      {/* Handles on the selected element. Rotation stays a
+                          quarter-turn choice in the inspector, so the rotate
+                          handle is off. */}
+                      <Transformer
+                        ref={transformer}
+                        rotateEnabled={false}
+                        centeredScaling={fromCentre}
+                        keepRatio={handles?.keepRatio ?? false}
+                        enabledAnchors={handles?.anchors ?? []}
+                        anchorSize={8}
+                        anchorCornerRadius={2}
+                        anchorStroke={INSTRUMENT}
+                        anchorFill="#ffffff"
+                        borderStroke={INSTRUMENT}
+                        ignoreStroke
+                        boundBoxFunc={(previous, next) =>
+                          next.width < 4 || next.height < 4 ? previous : next
+                        }
+                      />
+                      {/* Smart guides: what the dragged element is lined up with. */}
+                      {guides.map((guide, index) => (
+                        <Line
+                          key={index}
+                          points={
+                            guide.axis === 'x'
+                              ? [
+                                  guide.at * pxPerMm,
+                                  guide.from * pxPerMm,
+                                  guide.at * pxPerMm,
+                                  guide.to * pxPerMm,
+                                ]
+                              : [
+                                  guide.from * pxPerMm,
+                                  guide.at * pxPerMm,
+                                  guide.to * pxPerMm,
+                                  guide.at * pxPerMm,
+                                ]
+                          }
+                          stroke={GUIDE}
+                          strokeWidth={1}
+                          listening={false}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    // Sibling cells are live copies: same artwork, slightly
+                    // lifted so the eye finds the one that takes edits.
+                    <Group opacity={0.55} listening={false}>
+                      {template.elements.map((element, index) => (
+                        <ElementShape
+                          key={element.id}
+                          element={bound[index] ?? element}
+                          pxPerMm={pxPerMm}
+                          dpi={dpi}
+                          selected={false}
+                          onSelect={() => {}}
+                          onMove={() => {}}
+                        />
+                      ))}
+                    </Group>
+                  )}
 
-          {ticks.map((mm) => {
-            const y = originY + mm * pxPerMm
-            if (mm > template.media.height || y > size.height) return null
-            return (
-              <Group key={`y${mm}`}>
-                <Line points={[RULER - 5, y, RULER, y]} stroke="#7d908c" strokeWidth={1} />
-                <Text
-                  x={3}
-                  y={y + 3}
-                  text={String(mm)}
-                  fontSize={10}
-                  fontFamily="Cascadia Mono, Consolas, monospace"
-                  fill="#92a5a0"
-                />
-              </Group>
-            )
-          })}
+                  {/* The die-cut edge, drawn last so it stays visible over dark artwork. */}
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={labelWidth}
+                    height={labelHeight}
+                    stroke={active ? INSTRUMENT : CUT}
+                    strokeWidth={1}
+                    dash={active ? undefined : [4, 3]}
+                    listening={false}
+                  />
+                </Group>
+              )
+            })}
 
-          {/* The corner where the rulers meet covers the first tick of each,
+            {/* The row after this pass, faint: it shows the gap, the cut and
+                where the next labels land, and takes no edits. */}
+            <Group opacity={0.4} listening={false}>
+              {cells
+                .filter((cell) => cell.row === 0)
+                .map((cell) => (
+                  <Group key={`next,${cell.column}`} x={cell.dx * pxPerMm} y={nextRowY * pxPerMm}>
+                    <Rect x={0} y={0} width={labelWidth} height={labelHeight} fill={PAPER} />
+                    {template.elements.map((element, index) => (
+                      <ElementShape
+                        key={element.id}
+                        element={bound[index] ?? element}
+                        pxPerMm={pxPerMm}
+                        dpi={dpi}
+                        selected={false}
+                        onSelect={() => {}}
+                        onMove={() => {}}
+                      />
+                    ))}
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={labelWidth}
+                      height={labelHeight}
+                      stroke={CUT}
+                      strokeWidth={1}
+                      dash={[4, 3]}
+                    />
+                  </Group>
+                ))}
+            </Group>
+          </Layer>
+
+          <Layer listening={false}>
+            <Rect x={0} y={0} width={size.width} height={RULER} fill={RULER_BG} />
+            <Rect x={0} y={0} width={RULER} height={size.height} fill={RULER_BG} />
+            <Line
+              points={[0, RULER + 0.5, size.width, RULER + 0.5]}
+              stroke={RULER_LINE}
+              strokeWidth={1}
+            />
+            <Line
+              points={[RULER + 0.5, 0, RULER + 0.5, size.height]}
+              stroke={RULER_LINE}
+              strokeWidth={1}
+            />
+
+            {xTicks.map((mm) => {
+              const x = originX + mm * pxPerMm
+              if (x > size.width) return null
+              return (
+                <Group key={`x${mm}`}>
+                  <Line points={[x, RULER - 6, x, RULER]} stroke={TICK} strokeWidth={1} />
+                  <Text
+                    x={x + 3}
+                    y={6}
+                    text={String(mm)}
+                    fontSize={10}
+                    fontFamily={MONO}
+                    fill={TICK_TEXT}
+                  />
+                </Group>
+              )
+            })}
+
+            {yTicks.map((mm) => {
+              const y = originY + mm * pxPerMm
+              if (y > size.height) return null
+              return (
+                <Group key={`y${mm}`}>
+                  <Line points={[RULER - 6, y, RULER, y]} stroke={TICK} strokeWidth={1} />
+                  <Text
+                    x={3}
+                    y={y + 3}
+                    text={String(mm)}
+                    fontSize={10}
+                    fontFamily={MONO}
+                    fill={TICK_TEXT}
+                  />
+                </Group>
+              )
+            })}
+
+            {/* The corner where the rulers meet covers the first tick of each,
               so it names the unit instead. */}
-          <Rect x={0} y={0} width={RULER} height={RULER} fill={RULER_BG} />
-          <Text
-            x={4}
-            y={7}
-            text="mm"
-            fontSize={9}
-            fontFamily="Cascadia Mono, Consolas, monospace"
-            fill={INSTRUMENT}
-          />
-        </Layer>
-      </Stage>
+            <Rect x={0} y={0} width={RULER} height={RULER} fill={RULER_BG} />
+            <Text x={5} y={8} text="mm" fontSize={9} fontFamily={MONO} fill={INSTRUMENT} />
+          </Layer>
+        </Stage>
+      ) : null}
+
+      {editing && 'value' in editing ? (
+        <InlineEditor
+          key={editing.id}
+          value={editing.value}
+          origin={{ x: originX + editing.x * pxPerMm, y: originY + editing.y * pxPerMm }}
+          font={
+            editing.type === 'text'
+              ? {
+                  // Exactly what TextShape draws with, so the editor is the text.
+                  size: (editing.fontSize / CAP_RATIO) * pxPerMm,
+                  family: TEXT_FONT_FAMILY,
+                  bold: editing.bold ?? false,
+                  scaleX: 1.2,
+                  lineHeight: linePitch(editing) * pxPerMm,
+                  ...(editing.maxWidth
+                    ? { width: (editing.maxWidth * pxPerMm) / 1.2, align: editing.align ?? 'left' }
+                    : {}),
+                }
+              : {
+                  // A barcode's value is not the drawn text, so it gets a
+                  // plain readable field at the element's corner.
+                  size: 13,
+                  family: 'Cascadia Mono, Consolas, monospace',
+                  bold: false,
+                  scaleX: 1,
+                  lineHeight: 18,
+                }
+          }
+          multiline={editing.type === 'text'}
+          onCommit={(value) => {
+            if (value !== editing.value) onEdit(editing.id, value)
+            setEditingId(null)
+          }}
+          onCancel={() => setEditingId(null)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "id": "example-part-tag-25x25-4up",
+  "name": "Part tag 25x25, 4 across",
+  "media": {
+    "width": 25,
+    "height": 25,
+    "gap": 0,
+    "type": "continuous",
+    "columns": 4,
+    "columnGap": 0
+  },
+  "defaults": {
+    "darkness": 8,
+    "speed": 4,
+    "direction": 1,
+    "copies": 1
+  },
+  "elements": [
+    {
+      "id": "kc8idcvb",
+      "type": "text",
+      "x": 2,
+      "y": 1.5,
+      "value": "{{name}}",
+      "fontSize": 2,
+      "maxWidth": 21,
+      "lineGap": 0.6
+    },
+    {
+      "id": "ckpuf66l",
+      "type": "text",
+      "x": 2,
+      "y": 7.8,
+      "value": "{{sku}}",
+      "fontSize": 1.8
+    },
+    {
+      "id": "knt2wzdx",
+      "type": "qrcode",
+      "errorCorrection": "M",
+      "x": 2,
+      "y": 11,
+      "value": "{{sku}}",
+      "moduleWidth": 0.5
+    },
+    {
+      "id": "mfkf3xzy",
+      "type": "text",
+      "x": 16,
+      "y": 21.5,
+      "value": "lblr",
+      "fontSize": 1.6
+    }
+  ],
+  "fields": [
+    "name",
+    "sku"
+  ]
+}

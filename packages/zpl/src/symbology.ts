@@ -15,10 +15,7 @@ export interface BarcodeCommandOptions {
  * interpretation line and `g` would place it above the bars; lblr always puts
  * it below, which is the convention everywhere outside pharmaceutical labelling.
  */
-export function barcodeCommand(
-  symbology: LinearSymbology,
-  options: BarcodeCommandOptions,
-): string {
+export function barcodeCommand(symbology: LinearSymbology, options: BarcodeCommandOptions): string {
   const o = options.orientation
   const h = Math.round(options.heightDots)
   const f = options.humanReadable ? 'Y' : 'N'

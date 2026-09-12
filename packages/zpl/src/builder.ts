@@ -69,9 +69,42 @@ export class ZplBuilder {
     return this.raw(`^LL${Math.round(dots)}`)
   }
 
-  /** Label home position — ZPL's equivalent of TSPL's REFERENCE. */
+  /** Label home position — ZPL's equivalent of TSPL's REFERENCE. Never negative. */
   labelHome(xDots: number, yDots: number): this {
     return this.raw(`^LH${Math.round(xDots)},${Math.round(yDots)}`)
+  }
+
+  /** Horizontal shift of the whole label; negative moves it left. */
+  labelShift(xDots: number): this {
+    return this.raw(`^LS${clamp(Math.round(xDots), -9999, 9999)}`)
+  }
+
+  /** Vertical shift of the whole label; negative moves it up. Limited to ±120 dots. */
+  labelTop(yDots: number): this {
+    return this.raw(`^LT${clamp(Math.round(yDots), -120, 120)}`)
+  }
+
+  /** Where the label stops after printing, relative to the tear bar. Limited to ±120 dots. */
+  tearOff(dots: number): this {
+    const value = clamp(Math.round(dots), -120, 120)
+    return this.raw(`~TA${value < 0 ? '-' : ''}${String(Math.abs(value)).padStart(3, '0')}`)
+  }
+
+  // --- maintenance -------------------------------------------------------
+
+  /** Feed to the next label edge. */
+  feed(): this {
+    return this.raw('~PH')
+  }
+
+  /** Slew the paper forward by a number of dot rows. Belongs inside a format. */
+  slew(dots: number): this {
+    return this.raw(`^PF${clamp(Math.round(dots), 0, 32000)}`)
+  }
+
+  /** Run the media and ribbon sensor calibration. */
+  calibrate(): this {
+    return this.raw('~JC')
   }
 
   /**
@@ -153,7 +186,11 @@ export class ZplBuilder {
    */
   qrcode(
     content: string,
-    options: { magnification: number; errorCorrection?: 'L' | 'M' | 'Q' | 'H'; orientation?: ZplOrientation },
+    options: {
+      magnification: number
+      errorCorrection?: 'L' | 'M' | 'Q' | 'H'
+      orientation?: ZplOrientation
+    },
   ): this {
     const ecc = options.errorCorrection ?? 'M'
     const orientation = options.orientation ?? 'N'

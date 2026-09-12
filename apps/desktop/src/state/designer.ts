@@ -7,22 +7,58 @@
  * means saving, printing and previewing never need a translation step.
  */
 
-import { useCallback, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer } from 'react'
 import {
+  NO_TEXT_SCALE,
   barcode,
   box,
   createTemplate,
   elementId,
   line,
+  parseTemplate,
   qrcode,
+  serializeTemplate,
   text,
+  templateFields,
+  blankRecord,
+  type DataRecord,
   type LabelElement,
   type LabelTemplate,
   type MediaSpec,
   type PrintDefaults,
+  type TextScale,
 } from '@lblr/core'
 
 export type PrinterLanguage = 'tspl' | 'zpl'
+
+/**
+ * Zoom is screen pixels per printer dot. 1 is the honest view; the ladder the
+ * buttons and shortcuts climb is coarse on purpose so a few presses cover the
+ * whole useful range, while the wheel moves smoothly between rungs.
+ */
+export const ZOOM_MIN = 0.25
+export const ZOOM_MAX = 32
+export const ZOOM_DEFAULT = 4
+export const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32]
+
+export function clampZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return ZOOM_DEFAULT
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom))
+}
+
+/** The next rung of the ladder above (or below) the current zoom. */
+export function stepZoom(zoom: number, direction: 1 | -1): number {
+  const epsilon = 1e-6
+  if (direction > 0) {
+    return ZOOM_STEPS.find((step) => step > zoom + epsilon) ?? ZOOM_MAX
+  }
+  return [...ZOOM_STEPS].reverse().find((step) => step < zoom - epsilon) ?? ZOOM_MIN
+}
+
+/** "4×", "1.5×", "0.75×": as many decimals as the value needs and no more. */
+export function formatZoom(zoom: number): string {
+  return `${Number(zoom.toFixed(2))}×`
+}
 
 export interface DesignerState {
   template: LabelTemplate
@@ -32,6 +68,16 @@ export interface DesignerState {
   zoom: number
   /** Sample values for `{{field}}` placeholders, so the canvas shows real text. */
   sample: Record<string, string>
+  /**
+   * How much each printer language's font needs correcting, measured with the
+   * text size check. A property of the printer, not the label, so it lives
+   * here rather than in the template.
+   */
+  textScale: Record<PrinterLanguage, TextScale>
+  /** One record per label to print in a batch. Kept apart from the template. */
+  records: DataRecord[]
+  /** Row of the sheet shown on the canvas instead of the sample values. */
+  previewRow: number | null
   past: LabelTemplate[]
   future: LabelTemplate[]
   dirty: boolean
@@ -44,6 +90,7 @@ export type DesignerAction =
   | { type: 'update'; id: string; patch: Partial<LabelElement> }
   | { type: 'remove'; id: string }
   | { type: 'reorder'; id: string; direction: 'up' | 'down' }
+  | { type: 'arrange'; id: string; index: number }
   | { type: 'select'; id: string | null }
   | { type: 'media'; patch: Partial<MediaSpec> }
   | { type: 'defaults'; patch: Partial<PrintDefaults> }
@@ -52,7 +99,14 @@ export type DesignerAction =
   | { type: 'dpi'; dpi: number }
   | { type: 'zoom'; zoom: number }
   | { type: 'sample'; field: string; value: string }
+  | { type: 'textScale'; language: PrinterLanguage; scale: TextScale }
+  | { type: 'records'; records: DataRecord[] }
+  | { type: 'cell'; row: number; field: string; value: string }
+  | { type: 'addRow' }
+  | { type: 'removeRow'; row: number }
+  | { type: 'previewRow'; row: number | null }
   | { type: 'load'; template: LabelTemplate; path: string | null }
+  | { type: 'new'; template: LabelTemplate }
   | { type: 'saved'; path: string }
   | { type: 'undo' }
   | { type: 'redo' }
@@ -81,18 +135,82 @@ function starterTemplate(): LabelTemplate {
 
 const MAX_UNDO = 60
 
+/**
+ * The document survives a restart. Closing the app mid-design and finding the
+ * sample label again is the kind of thing that makes a tool feel disposable,
+ * so the template, its sample values and the printer choice are kept in the
+ * WebView's storage and restored on launch. The file path is kept too, so
+ * Save goes back to the same file.
+ */
+const SESSION_KEY = 'lblr.session.v1'
+
+interface StoredSession {
+  template: string
+  language: PrinterLanguage
+  dpi: number
+  sample: Record<string, string>
+  textScale?: Record<PrinterLanguage, TextScale>
+  records?: DataRecord[]
+  path: string | null
+  dirty: boolean
+}
+
+const UNSCALED: Record<PrinterLanguage, TextScale> = { tspl: NO_TEXT_SCALE, zpl: NO_TEXT_SCALE }
+
+function restoreSession(): Partial<DesignerState> | null {
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const stored = JSON.parse(raw) as StoredSession
+    return {
+      template: parseTemplate(stored.template),
+      language: stored.language === 'zpl' ? 'zpl' : 'tspl',
+      dpi: [203, 300, 600].includes(stored.dpi) ? stored.dpi : 203,
+      sample: stored.sample ?? {},
+      textScale: { ...UNSCALED, ...stored.textScale },
+      records: Array.isArray(stored.records) ? stored.records : [],
+      path: stored.path ?? null,
+      dirty: Boolean(stored.dirty),
+    }
+  } catch {
+    return null
+  }
+}
+
+export function persistSession(state: DesignerState): void {
+  try {
+    const stored: StoredSession = {
+      template: serializeTemplate(state.template),
+      language: state.language,
+      dpi: state.dpi,
+      sample: state.sample,
+      textScale: state.textScale,
+      records: state.records,
+      path: state.path,
+      dirty: state.dirty,
+    }
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify(stored))
+  } catch {
+    // Storage can be missing or full; losing the session is not worth a crash.
+  }
+}
+
 export function initialState(): DesignerState {
   return {
     template: starterTemplate(),
     selectedId: null,
     language: 'tspl',
     dpi: 203,
-    zoom: 4,
+    zoom: ZOOM_DEFAULT,
     sample: { name: 'ACME Bearing 6204', sku: '7894561230' },
+    textScale: UNSCALED,
+    records: [],
+    previewRow: null,
     past: [],
     future: [],
     dirty: false,
     path: null,
+    ...restoreSession(),
   }
 }
 
@@ -129,9 +247,7 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
         state,
         mapElements(state.template, (elements) =>
           elements.map((element) =>
-            element.id === action.id
-              ? ({ ...element, ...action.patch } as LabelElement)
-              : element,
+            element.id === action.id ? ({ ...element, ...action.patch } as LabelElement) : element,
           ),
         ),
       )
@@ -143,7 +259,22 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
           elements.filter((element) => element.id !== action.id),
         ),
       )
-      return { ...next, selectedId: state.selectedId === action.id ? null : state.selectedId }
+      return {
+        ...next,
+        selectedId: state.selectedId === action.id ? null : state.selectedId,
+      }
+    }
+
+    case 'arrange': {
+      // The list reads top-down and later in the array draws on top, so the
+      // move happens in the reversed order and is reversed back.
+      const stacked = [...state.template.elements].reverse()
+      const from = stacked.findIndex((element) => element.id === action.id)
+      if (from < 0) return state
+      const [moved] = stacked.splice(from, 1)
+      if (!moved) return state
+      stacked.splice(Math.min(stacked.length, Math.max(0, action.index)), 0, moved)
+      return edit(state, { ...state.template, elements: stacked.reverse() })
     }
 
     case 'reorder': {
@@ -166,7 +297,10 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
       return { ...state, selectedId: action.id }
 
     case 'media':
-      return edit(state, { ...state.template, media: { ...state.template.media, ...action.patch } })
+      return edit(state, {
+        ...state.template,
+        media: { ...state.template.media, ...action.patch },
+      })
 
     case 'defaults':
       return edit(state, {
@@ -184,16 +318,76 @@ export function reducer(state: DesignerState, action: DesignerAction): DesignerS
       return { ...state, dpi: action.dpi }
 
     case 'zoom':
-      return { ...state, zoom: Math.min(16, Math.max(1, action.zoom)) }
+      return { ...state, zoom: clampZoom(action.zoom) }
 
     case 'sample':
-      return { ...state, sample: { ...state.sample, [action.field]: action.value } }
+      return {
+        ...state,
+        sample: { ...state.sample, [action.field]: action.value },
+      }
+
+    case 'textScale':
+      return {
+        ...state,
+        textScale: { ...state.textScale, [action.language]: action.scale },
+      }
+
+    case 'records':
+      return {
+        ...state,
+        records: action.records,
+        previewRow:
+          state.previewRow !== null && state.previewRow < action.records.length
+            ? state.previewRow
+            : null,
+      }
+
+    case 'cell':
+      return {
+        ...state,
+        records: state.records.map((record, index) =>
+          index === action.row ? { ...record, [action.field]: action.value } : record,
+        ),
+      }
+
+    case 'addRow': {
+      const records = [...state.records, blankRecord(templateFields(state.template))]
+      return { ...state, records, previewRow: records.length - 1 }
+    }
+
+    case 'removeRow': {
+      const records = state.records.filter((_, index) => index !== action.row)
+      const previewRow =
+        state.previewRow === null
+          ? null
+          : state.previewRow === action.row
+            ? null
+            : state.previewRow > action.row
+              ? state.previewRow - 1
+              : state.previewRow
+      return { ...state, records, previewRow }
+    }
+
+    case 'previewRow':
+      return { ...state, previewRow: action.row }
 
     case 'load':
       return {
         ...state,
         template: action.template,
         path: action.path,
+        selectedId: null,
+        past: [],
+        future: [],
+        dirty: false,
+      }
+
+    case 'new':
+      // A fresh document has nowhere to save to yet, and nothing to undo.
+      return {
+        ...state,
+        template: action.template,
+        path: null,
         selectedId: null,
         past: [],
         future: [],
@@ -235,7 +429,12 @@ export function newElement(kind: LabelElement['type'], at: { x: number; y: numbe
     case 'text':
       return text({ ...at, value: 'Text', fontSize: 3 })
     case 'barcode':
-      return barcode({ ...at, value: '012345678905', symbology: 'code128', height: 10 })
+      return barcode({
+        ...at,
+        value: '012345678905',
+        symbology: 'code128',
+        height: 10,
+      })
     case 'qrcode':
       return qrcode({ ...at, value: 'https://example.com', moduleWidth: 0.5 })
     case 'box':
@@ -244,12 +443,32 @@ export function newElement(kind: LabelElement['type'], at: { x: number; y: numbe
       return line({ ...at, length: 20, thickness: 0.3 })
     case 'image':
       // Placed through the image picker rather than the rail; kept for completeness.
-      return { id: elementId(), type: 'image', ...at, data: '', width: 10, height: 10 }
+      return {
+        id: elementId(),
+        type: 'image',
+        ...at,
+        data: '',
+        width: 10,
+        height: 10,
+      }
   }
 }
 
 export function useDesigner() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
+
+  useEffect(() => {
+    persistSession(state)
+  }, [
+    state.template,
+    state.language,
+    state.dpi,
+    state.sample,
+    state.textScale,
+    state.records,
+    state.path,
+    state.dirty,
+  ])
 
   const selected = useMemo(
     () => state.template.elements.find((element) => element.id === state.selectedId) ?? null,
