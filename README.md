@@ -56,7 +56,13 @@ The same template renders in the designer and on the printer because both consum
 
 ## Install
 
-Prebuilt binaries are not published yet. To run from source see [Development](#development).
+**Windows:** download the installer from the
+[latest release](https://github.com/ravinila/lblr/releases/latest) and run it. The
+`lblr_x.y.z_x64-setup.exe` file is a normal setup wizard; the `.msi` is the same app for managed
+installs. The installer is not code-signed yet, so Windows SmartScreen shows a warning on first
+run. Choose "More info" and then "Run anyway".
+
+Other platforms are not packaged yet. To run from source see [Development](#development).
 
 ## Quick start
 
